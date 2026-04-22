@@ -46,6 +46,17 @@
 // ==================== RELAY ==========================
 #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR, solid state relay - 5 vdc TTL TBD for larger ssr
 
+// ==================== I2C 8-ch SSR (PCF8574 module) ===
+// EMS 865B: use the vertical header labeled GND, 5V, SDA, SCL - wire to the SSR
+// module screw terminal (+5V, GND, SCL, SDA) pin-for-pin (SDA->SDA, SCL->SCL).
+// These GPIOs must match how the 865B PCB routes that header to the ESP32-S3.
+// Defaults 4/5 match spare pins on the V001 pinout; if I2C scan finds nothing, ask
+// NESL for the 865B netlist or probe which module pins connect to which ESP pins.
+#define I2C_SSR_SDA_GPIO     4
+#define I2C_SSR_SCL_GPIO     5
+// PCF8574: 0x20-0x27 from DIP A2/A1/A0. PCF8574A often uses 0x38-0x3F.
+#define PCF8574_I2C_ADDR   0x20
+
 // ==================== CAN INTERFACE ==================
 #define CAN0_CS     2   //SPI chip select
 #define CAN0_SO     42  //SPI MISO

@@ -5,7 +5,9 @@ A development kit based on the ESP32S3 N16R8 DEV KIT C1 for energy management sy
 
 ## Branch `hack-relays` (workshop / hackathon)
 
-**Intent for this branch:** Keep **OpenAMI-style metering** as the base story, but prioritize a **simple operator path**: Modbus (or equivalent) **reads per feed**, plus **discrete relay / SSR control per customer** (e.g. 8-channel I2C relay bank on the NESL **EMS 865B** bring-up in **nesl-meshems**). Cloud topics and full lane-B networking stay **out of scope** until the local meter + relay loop is stable.
+**Intent for this branch:** Keep **OpenAMI-style metering** as the base story, but prioritize a **simple operator path**: Modbus (or equivalent) **reads per feed**, plus **discrete relay / SSR control per customer** (8-channel I2C SSR bank on the NESL **EMS 865B**). Cloud topics and full lane-B networking stay **out of scope** until the local meter + relay loop is stable.
+
+**Firmware in this branch:** `include/i2c_ssr_bank.h`, `src/i2c_ssr_bank.cpp`, and `I2C_SSR_*` / `PCF8574_I2C_ADDR` in `include/pins.h` (ported from **nesl-meshems**). On boot, USB serial **115200** runs an **I2C scan**; keys **0-7** toggle SSR channels, **a** all off, **?** help. Wire **865B GND/5V/SDA/SCL** to the module **GND/+5V/SDA/SCL**; set the DIP address to match `PCF8574_I2C_ADDR`.
 
 **Deliverable we want by end of hack:** Documented wiring, working toggle path from firmware to SSR outputs, and a clear mapping table (customer / meter id / relay channel) for field use.
 

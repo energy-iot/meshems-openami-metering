@@ -39,6 +39,7 @@
 #include <console.h>    // Console UI for the display
 #include <SPI.h>        // SPI communication for display/CAN
 #include <can.h>        // Implementation of CAN bus communication
+#include <i2c_ssr_bank.h>
 #include <wifi.h>
 #include <mqtt_client.h>
 #include <config.h>
@@ -74,6 +75,7 @@ void setup() {
     setup_can(); // Initialize CAN bus communication
 
     setup_buttons();
+    setup_i2c_ssr_bank();
     _console.addLine(" EMS In-service Ready!");
     _console.addLine("  CHECK MQTT @");
     _console.addLine("  public.cloud.shiftr.io"); //TODO grab the setup strings from the config file
@@ -128,6 +130,7 @@ void loop() {
     loop_buttons(); 
     loop_display();
     loop_can();
+    loop_i2c_ssr_bank_serial();
     // TODO loop_IFTTT();
     // TODO loop_alerts();
     

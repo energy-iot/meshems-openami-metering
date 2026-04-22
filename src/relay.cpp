@@ -18,3 +18,7 @@ void setup_relays() {
     pinMode(RELAY_1_PIN,OUTPUT);
     digitalWrite(RELAY_1_PIN,LOW);
 }
+
+void loop_relays() {
+    // Onboard SSR is event-driven via toggle_relay_1(); nothing to poll here.
+}
