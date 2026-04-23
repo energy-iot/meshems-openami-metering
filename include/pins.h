@@ -111,10 +111,10 @@ elif defined(BOARD_VER_V2)
     // These GPIOs must match how the 865B PCB routes that header to the ESP32-S3.
     // Defaults 4/5 match spare pins on the V001 pinout; if I2C scan finds nothing, ask
     // NESL for the 865B netlist or probe which module pins connect to which ESP pins.
-    #define I2C_SSR_SDA_GPIO     40
-    #define I2C_SSR_SCL_GPIO     0
+    #define I2C_SSR_SDA_GPIO     14
+    #define I2C_SSR_SCL_GPIO     20
     // PCF8574: 0x20-0x27 from DIP A2/A1/A0. PCF8574A often uses 0x38-0x3F.
-    #define PCF8574_I2C_ADDR   0x20
+    #define PCF8574_I2C_ADDR   0x27
 
     // ==================== CAN INTERFACE ==================
     #define CAN0_CS     2   //SPI chip select

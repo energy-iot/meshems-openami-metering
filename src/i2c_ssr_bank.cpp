@@ -52,6 +52,19 @@ void setup_i2c_ssr_bank() {
     }
 }
 
+void loop_i2c_ssr_bank_blink_test() {
+    static unsigned long lastBlink = 0;
+    if (millis() - lastBlink > 500) {
+        lastBlink = millis();
+        s_shadow ^= (uint8_t)(1u << 7);
+        if (pcf8574_write(to_bus_value(s_shadow))) {
+            Serial.printf("SSR1 -> %s\n", (s_shadow & (1u << 7)) ? "ON" : "OFF");
+        } else {
+            Serial.println("I2C write failed");
+        }
+    }
+}
+
 void loop_i2c_ssr_bank_serial() {
     while (Serial.available()) {
         char c = (char)Serial.read();
