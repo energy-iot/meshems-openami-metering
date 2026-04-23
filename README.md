@@ -112,6 +112,72 @@ screen /dev/cu.usbmodemXXXXX 115200
 # Exit: Ctrl+A, K, Y
 ```
 
+---
+
+## Web Dashboard + GeoJSON (current hack-relays workflow)
+
+This branch now includes an operator-focused web dashboard served by the ESP32:
+
+- `/` serves `data/index.html` (MapLibre + Chart.js UI)
+- `/api/dashboard` returns dashboard JSON with embedded GeoJSON features
+- `/api/relay?board=<id>&channel=<id>&state=<0|1>` toggles relay state and returns command result
+
+### Scope clarification (important)
+
+- This dashboard is a **simulation interface running on lab equipment**.
+- It is designed to represent a **real field operating context** and field topology we are connected to through an operator relationship.
+- It is **not** a 1:1 production deployment of the field control stack.
+- In the current lab setup, only board 0 channels 0-7 are hardware-backed via the IoTMug I2C SSR; other channels/data are simulated.
+
+### What is shown in the dashboard
+
+- Satellite basemap with site/court geometry
+- House points (10 homes) with per-house relay state color:
+  - **Green** = connected / relay ON
+  - **Red** = disconnected / relay OFF
+- A one-day simulated timeline per house (hourly kWh values)
+- Relay controls with explicit action buttons:
+  - **TURN ON** (green action button)
+  - **TURN OFF** (red action button)
+
+### GeoJSON notes
+
+- House points are emitted as proper GeoJSON Point coordinates in `[lon, lat, z]` order.
+- Court/path and feeder lines are emitted as LineString features.
+- The current implementation uses one StreetPoleEMS board with 10 house points for visualization.
+- Board 0 channels 0-7 are hardware-backed via IoTMug I2C SSR; channels 8-9 are currently simulated.
+
+### Deployment gotcha: upload filesystem content
+
+If `/api/dashboard` works but `/` does not load the UI, upload SPIFFS filesystem assets:
+
+```bash
+pio run -t uploadfs --upload-port /dev/cu.usbmodemXXXXX
+pio run -t upload   --upload-port /dev/cu.usbmodemXXXXX
+```
+
+---
+
+## Nearly Free Energy (Uganda) site-layout reference
+
+The current court/house layout in the dashboard is based on the Nearly Free Energy Sezibwa Homes site-layout page (Uganda), then represented in GeoJSON for this ESP32 dashboard workflow.
+
+- Source page: https://bookstack.nearlyfreeenergy.com/books/business/page/site-layout
+- In this repo, those house coordinates are embedded in `src/main.cpp` and exposed through `/api/dashboard`.
+
+When updating site geometry, keep the source-of-truth process simple:
+
+1. Capture site coordinates (survey/GPS or engineering drawing export)
+2. Store as `lat,lon` source data
+3. Convert to GeoJSON output order `lon,lat`
+4. Validate by opening `/api/dashboard` and confirming house placement on satellite map
+
+### Field screenshot (Uganda relay map dashboard)
+
+- Screenshot file: [`uganda_relay_01.png`](uganda_relay_01.png)
+
+![StreetPoleEMS Uganda relay map dashboard](uganda_relay_01.png)
+
 ## Features
 This development kit supports multiple peripherals using the PlatformIO and Arduino framework:
 - RS-485 MODBUS RTU communication
