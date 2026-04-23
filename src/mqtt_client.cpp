@@ -436,6 +436,40 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
     } while (*data++ != 0);
 }
 
+// -------------------------------------------------------------------
+// Command handlers — one function per command keyword.
+// Each receives the full null-terminated payload so it can parse args.
+// -------------------------------------------------------------------
+static void cmd_report(const char* payload) {
+  // TODO: trigger a data-model dump
+  Serial.printf("matched \"report\"\n");
+}
+
+static void cmd_meter(const char* payload) {
+  // TODO: control the meter
+  Serial.printf("matched \"meter\"\n");
+}
+
+static void cmd_bms(const char* payload) {
+  // TODO: BMS command
+  Serial.printf("matched \"bms\"\n");
+}
+
+static void cmd_inverter(const char* payload) {
+  // TODO: inverter command
+  Serial.printf("matched \"inverter\"\n");
+}
+
+// Dispatch table — add new {keyword, handler} rows here to extend.
+typedef void (*cmd_handler_t)(const char*);
+struct CmdEntry { const char* keyword; cmd_handler_t handler; };
+static const CmdEntry cmd_table[] = {
+  { "report",   cmd_report  },
+  { "meter",    cmd_meter   },
+  { "bms",      cmd_bms     },
+  { "inverter", cmd_inverter },
+};
+
 // Subscriber callback
 //
 // We're subscribed to the following topics:
@@ -458,23 +492,18 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
     strncpy(payload_buf, (char*)payload, length);
     payload_buf[length] = '\0';         //ensure null-termination
     Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
-    if (strcmp(payload_buf, "report") == 0) {
-      //trigger a data-model dump
-      return;
+
+    bool matched = false;
+    for (size_t i = 0; i < sizeof(cmd_table) / sizeof(cmd_table[0]); i++) {
+      if (strcmp(payload_buf, cmd_table[i].keyword) == 0) {
+        cmd_table[i].handler(payload_buf);
+        matched = true;
+        break;
+      }
     }
-    if (strcmp((char*)payload_buf, "meter") == 0) {
-      //control the meter
-      return;
+    if (!matched) {
+      Serial.printf("no match %s\n", payload_buf);
     }
-    if (strcmp((char*)payload_buf, "bms") == 0) {
-      //BMS command
-      return;
-    }
-    if (strcmp((char*)payload_buf, "inverter") == 0) {
-      //inverter command
-      return;
-    }
-    // add new commands here
   }
 }
 
