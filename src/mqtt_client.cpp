@@ -96,7 +96,8 @@ last_bandwidth_report_time  time in secs since last report
 #include <sunspec_model_213_base.h>       // stays true to Sunspec base 213 data model schema
 #include <sunspec_model_213_harmonics.h>  // TODO confirm if there is a harmonics report for Sunspec model and adapt or change to be flexible
 #include <leakage_model_ivy41a.h>         // these are actioanable leakage sensor measurements based on Type B leakage
-#include <sunspec_model_1.h> 
+#include <sunspec_model_1.h>
+#include <i2c_ssr_bank.h>
 #include <sunspec_model_11.h>    
 #include <ems_env_model.h>    
 //#include "modbus_devices.h"             // added by Kevin - future use
@@ -438,36 +439,73 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
 
 // -------------------------------------------------------------------
 // Command handlers — one function per command keyword.
-// Each receives the full null-terminated payload so it can parse args.
+// Each receives the parsed JSON document so it can extract parameters.
 // -------------------------------------------------------------------
-static void cmd_report(const char* payload) {
-  // TODO: trigger a data-model dump
-  Serial.printf("matched \"report\"\n");
-}
+static void cmd_report  (const JsonDocument&) { Serial.printf("matched \"report\"\n");   }
+static void cmd_meter   (const JsonDocument&) { Serial.printf("matched \"meter\"\n");    }
+static void cmd_bms     (const JsonDocument&) { Serial.printf("matched \"bms\"\n");      }
+static void cmd_inverter(const JsonDocument&) { Serial.printf("matched \"inverter\"\n"); }
 
-static void cmd_meter(const char* payload) {
-  // TODO: control the meter
-  Serial.printf("matched \"meter\"\n");
-}
+/**
+ * Example relay payloads:
+ * {"cmd":"relay","address":0,"kwh_limit":100.0}
+ * {"cmd":"relay","address":3,"kw_limit":5.5}
+ * {"cmd":"relay","address":7,"kwh_limit":250.0,"kw_limit":12.0}
+ * {"cmd":"relay","address":3,"kwh_limit":80.0}
+ * {"cmd":"relay","address":2,"state":"open"}
+ */
+static void cmd_relay(const JsonDocument& doc) {
+    if (!doc["address"].is<int>()) {
+        Serial.println("relay cmd: missing or invalid 'address'");
+        return;
+    }
+    int address = doc["address"].as<int>();
+    if (address < 0 || address > 7) {
+        Serial.printf("relay cmd: address %d out of range 0-7\n", address);
+        return;
+    }
 
-static void cmd_bms(const char* payload) {
-  // TODO: BMS command
-  Serial.printf("matched \"bms\"\n");
-}
+    bool has_state = doc["state"].is<const char*>();
+    bool has_kwh   = doc["kwh_limit"].is<float>() || doc["kwh_limit"].is<int>();
+    bool has_kw    = doc["kw_limit"].is<float>()  || doc["kw_limit"].is<int>();
 
-static void cmd_inverter(const char* payload) {
-  // TODO: inverter command
-  Serial.printf("matched \"inverter\"\n");
+    if (has_state && (has_kwh || has_kw)) {
+        Serial.println("relay cmd: 'state' is mutually exclusive with limit fields");
+        return;
+    }
+    if (!has_state && !has_kwh && !has_kw) {
+        Serial.println("relay cmd: must provide 'state', 'kwh_limit', or 'kw_limit'");
+        return;
+    }
+
+    if (has_state) {
+        // TODO: call set_ssr_channel() once implemented in i2c_ssr_bank
+        Serial.printf("relay cmd: ch %d state='%s' received (actuation not yet wired)\n",
+                      address, doc["state"].as<const char*>());
+        return;
+    }
+
+    RelayRule rule;
+    rule.kwh_limit = has_kwh ? doc["kwh_limit"].as<float>() : -1.0f;
+    rule.kw_limit  = has_kw  ? doc["kw_limit"].as<float>()  : -1.0f;
+    set_relay_rule((uint8_t)address, rule);
+
+    Serial.println("relay rules:");
+    for (uint8_t ch = 0; ch < 8; ch++) {
+        RelayRule r = get_relay_rule(ch);
+        Serial.printf("  ch %d: kwh_limit=%.2f kw_limit=%.2f\n", ch, r.kwh_limit, r.kw_limit);
+    }
 }
 
 // Dispatch table — add new {keyword, handler} rows here to extend.
-typedef void (*cmd_handler_t)(const char*);
+typedef void (*cmd_handler_t)(const JsonDocument&);
 struct CmdEntry { const char* keyword; cmd_handler_t handler; };
 static const CmdEntry cmd_table[] = {
-  { "report",   cmd_report  },
-  { "meter",    cmd_meter   },
-  { "bms",      cmd_bms     },
+  { "report",   cmd_report   },
+  { "meter",    cmd_meter    },
+  { "bms",      cmd_bms      },
   { "inverter", cmd_inverter },
+  { "relay",    cmd_relay    },
 };
 
 // Subscriber callback
@@ -478,6 +516,7 @@ static const CmdEntry cmd_table[] = {
 //TODO add a few lines where the mqtt_cmd_count stat is incremented
 // 
 void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
+  Serial.printf("\n***GOT A COMMAND***\n");
   //sanity
   if (length > 254) {
     Serial.printf("MQTT CALLBACK: not handled: payload len overrun:%d\n", length);
@@ -493,16 +532,23 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
     payload_buf[length] = '\0';         //ensure null-termination
     Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
 
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, payload_buf);
+    if (err) {
+      Serial.printf("MQTT CALLBACK: JSON parse error: %s\n", err.c_str());
+      return;
+    }
+    const char* cmd = doc["cmd"] | "";
     bool matched = false;
     for (size_t i = 0; i < sizeof(cmd_table) / sizeof(cmd_table[0]); i++) {
-      if (strcmp(payload_buf, cmd_table[i].keyword) == 0) {
-        cmd_table[i].handler(payload_buf);
+      if (strcmp(cmd, cmd_table[i].keyword) == 0) {
+        cmd_table[i].handler(doc);
         matched = true;
         break;
       }
     }
     if (!matched) {
-      Serial.printf("no match %s\n", payload_buf);
+      Serial.printf("MQTT CALLBACK: no match for cmd '%s'\n", cmd);
     }
   }
 }

@@ -9,6 +9,7 @@
 #endif
 
 static uint8_t s_shadow = 0x00;
+static RelayRule relay_rules[8];
 
 static uint8_t to_bus_value(uint8_t logical) {
 #if I2C_SSR_ACTIVE_LOW
@@ -63,6 +64,17 @@ void loop_i2c_ssr_bank_blink_test() {
             Serial.println("I2C write failed");
         }
     }
+}
+
+bool set_relay_rule(uint8_t channel, RelayRule rule) {
+    if (channel > 7) return false;
+    relay_rules[channel] = rule;
+    return true;
+}
+
+const RelayRule get_relay_rule(uint8_t channel) {
+    if (channel > 7) return RelayRule{};
+    return relay_rules[channel];
 }
 
 void loop_i2c_ssr_bank_serial() {
