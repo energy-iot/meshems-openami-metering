@@ -112,24 +112,30 @@ void loop() {
         loop_modbus_master();
    }
 
-   if (millis() - lastMQTTPollMillis > MQTTPoll_rate) {
-        lastMQTTPollMillis = millis();
-        poll_mqtt();
-   }
+   bool poll_due    = (millis() - lastMQTTPollMillis) > (unsigned long)MQTTPoll_rate;
+   bool publish_due = (millis() - lastMQTTMillis)     > (unsigned long)MQTTPublish_rootrate;
 
-   if (millis() - lastMQTTMillis > MQTTPublish_rootrate) {
-        lastMQTTMillis = millis();
-        /*
-            TODO  calculate which are the normal periodic work items for this loop based on configurable MQTT periodic and adaptive 
-            PUBLISH operations 
-            perhaps  12 or so adaptive Publish global bools turned on or off per loop, the periodic  tasks in the subloops can then be targeted to run 
-            this allows for adaptive rate of openami topics to be published , these adaptive rates can have a defualt periodicity
-            but then time of day schedule can chnage the periodicity of the tasks.
-            for example publish a base rate of 30 seconds, publish leaks at period of hourly , publish 3 ph summaries and single tenant meters 
-             every 15 min itervals, publish harmnics every 15 mins, publish environmentals every 15 mins , 
-             dont publish stuff on same 15 min  cadence (other than the 3Phase and meters must be on hourly edge cadence)  to minmize peak bandwidths
-        */
-        loop_mqtt();
+   if (poll_due || publish_due) {
+        maintain_mqtt_connection();
+
+        if (poll_due) {
+            lastMQTTPollMillis = millis();
+            poll_mqtt();
+        }
+        if (publish_due) {
+            lastMQTTMillis = millis();
+            /*
+                TODO  calculate which are the normal periodic work items for this loop based on configurable MQTT periodic and adaptive
+                PUBLISH operations
+                perhaps  12 or so adaptive Publish global bools turned on or off per loop, the periodic  tasks in the subloops can then be targeted to run
+                this allows for adaptive rate of openami topics to be published , these adaptive rates can have a defualt periodicity
+                but then time of day schedule can chnage the periodicity of the tasks.
+                for example publish a base rate of 30 seconds, publish leaks at period of hourly , publish 3 ph summaries and single tenant meters
+                 every 15 min itervals, publish harmnics every 15 mins, publish environmentals every 15 mins ,
+                 dont publish stuff on same 15 min  cadence (other than the 3Phase and meters must be on hourly edge cadence)  to minmize peak bandwidths
+            */
+            loop_mqtt();
+        }
    }
   
     loop_modbus_client();

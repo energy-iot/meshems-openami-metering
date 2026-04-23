@@ -571,12 +571,8 @@ void setup_mqtt_client() {
 void loop_mqtt() {
   uint32_t loop_timestamp = esp_log_timestamp();
 
-      bool mqtt_connected = mqttclient.connected();
-      if (!mqtt_connected) {
-        mqtt_connected = mqtt_connect();
-      }
       //mqtt_publish(input);
-      if (mqtt_connected) {  
+      if (mqttclient.connected()) {  
       // TODO not all telemetry has to publish on same loop iteration, different rates of publish , 
       // target requirement is publish on a adaptive meaningful rate is a lean bandwidth on the meshed G3/PLC/Wireless/LORA MAC/PHY future iteration
 
@@ -633,6 +629,13 @@ void loop_mqtt() {
 
 void poll_mqtt() {
     mqttclient.loop();
+}
+
+void maintain_mqtt_connection() {
+    if (!mqttclient.connected()) {
+        Serial.println("MQTT: connection lost, attempting reconnect");
+        mqtt_connect();
+    }
 }
 
 void mqtt_restart()
