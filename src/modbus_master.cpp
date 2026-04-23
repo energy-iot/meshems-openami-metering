@@ -108,7 +108,9 @@ void setup_modbus_clients() {
     //setup_thermostats();  // Future expansion for modbus building thermostat
     //setup_dtm();          // Future expansion Building mains
     //TODO support thermostat and mete on same modbus master daisy chain
+#if MODBUS_ENABLE_SHT20
     setup_sht20();          // Initialize SHT20 temp/humid modbus sensor
+#endif
     //setup_evse();         // Future expansion multitenant EV charging
     setup_dds238();         // Initialize single phase meters , note they can be wired on separate phases
 }
@@ -142,8 +144,13 @@ void setup_modbus_master() {
  * Update data model with current sensor readings
  */
 void update() {
+#if MODBUS_ENABLE_SHT20
     inputRegisters[0] = sht20.getTemperature();
     inputRegisters[1] = sht20.getHumidity();
+#else
+    inputRegisters[0] = 0.0f;
+    inputRegisters[1] = 0.0f;
+#endif
     
     // Get all measurements from meters
     for(int i=0;i<MODBUS_NUM_METERS;i++) {
@@ -194,6 +201,7 @@ void poll_energy_meters() {
 }
 
 void poll_thermostats() {
+#if MODBUS_ENABLE_SHT20
     uint8_t result = sht20.poll();
     if (result != 0x00) {
         // Wait briefly for any late-arriving bytes, then print whatever the UART has
@@ -209,6 +217,7 @@ void poll_thermostats() {
             Serial.println("MODBUS RAW rx: nothing — SHT20 sent no response");
         }
     }
+#endif
     // TODO: extend to sht20_thermostats[] array for multiple sensors
     update();
 }

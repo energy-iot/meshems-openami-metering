@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>StreetPoleEMS Village Dashboard</title>
-  <link href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
   <style>
     body { margin: 0; background: #0f172a; color: #e2e8f0; font-family: Arial, sans-serif; }
     .app { display: grid; grid-template-columns: 2fr 1fr; min-height: 100vh; }
@@ -17,8 +17,17 @@
     .status-err { color: #f87171; font-size: 13px; margin-top: 8px; }
     .map-help { font-size: 12px; color: #94a3b8; margin-top: 8px; }
     .meter-list { max-height: 260px; overflow-y: auto; }
-    .meter-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+    .meter-row {
+      display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin: 0 -4px;
+      border-bottom: 1px solid #334155; border-radius: 8px; cursor: pointer;
+    }
     .meter-row:last-child { border-bottom: none; }
+    .meter-row:hover { background: rgba(148, 163, 184, 0.08); }
+    .meter-row-selected {
+      background: rgba(56, 189, 248, 0.14);
+      outline: 2px solid #38bdf8;
+      outline-offset: -2px;
+    }
     button {
       border: none;
       border-radius: 8px;
@@ -40,6 +49,61 @@
     }
     #historyChart { width: 100%; max-height: 220px; }
     .legend { display: flex; gap: 8px; font-size: 12px; margin-top: 8px; color: #cbd5e1; }
+    .cs-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+    .cs-charts h3 { margin: 0 0 6px 0; font-size: 13px; color: #94a3b8; font-weight: 600; }
+    .cs-chart-wrap { min-height: 160px; }
+    .cs-chart-wrap canvas { max-height: 200px; }
+    .diag {
+      font-size: 11px; line-height: 1.35; background: #0f172a; color: #cbd5e1;
+      padding: 10px; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;
+      word-break: break-word; border: 1px solid #334155; margin-top: 10px;
+    }
+    .diag-ok { color: #86efac; }
+    .diag-warn { color: #fbbf24; }
+    .diag-err { color: #f87171; }
+    .layer-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #334155;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    .layer-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+      border-top: 1px solid #334155;
+      font-size: 12px;
+      color: #e2e8f0;
+    }
+    .layer-row:first-child { border-top: none; }
+    .layer-row label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 0; }
+    .layer-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.35); }
+    .layer-row input { accent-color: #38bdf8; }
+    .layer-stack-note { font-size: 11px; color: #64748b; margin-top: 6px; }
+    .layer-stack-wrap { display: flex; gap: 12px; align-items: stretch; }
+    .layer-stack-viz {
+      display: flex;
+      flex-direction: column-reverse;
+      justify-content: flex-start;
+      gap: 2px;
+      padding: 6px 4px;
+      background: #0f172a;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      min-width: 28px;
+    }
+    .layer-stack-viz span {
+      display: block;
+      height: 5px;
+      border-radius: 2px;
+      opacity: 0.92;
+      box-shadow: 0 -1px 0 rgba(0,0,0,0.35);
+    }
   </style>
 </head>
 <body>
@@ -54,15 +118,43 @@
         <div id="selectionSummary" class="muted">Click a pole or house on the map.</div>
       </div>
 
-      <div class="card">
-        <h2>Daily House Timeline</h2>
-        <canvas id="historyChart"></canvas>
+      <div id="mapLayersCard" class="card" style="display:none" aria-hidden="true">
+        <h2>Map layers</h2>
+        <div class="muted">Draw order: top of list paints last (on top). Bars on the left = same stack bottom→top.</div>
+        <div class="layer-stack-wrap">
+          <div id="layerStackViz" class="layer-stack-viz" title="Layer cake (bottom = basemap)"></div>
+          <div id="layerStack" class="layer-stack" style="flex:1"></div>
+        </div>
+        <div class="layer-stack-note">Mapbox satellite-streets basemap at bottom; EMS overlays stack above.</div>
       </div>
 
       <div class="card">
-        <h2>Relay Controls</h2>
-        <div class="muted">Board 0 channels 0-7 are sent to the IoTMug I2C SSR board.</div>
-        <div class="map-help">Houses are color-coded by relay state: green connected (ON), red disconnected (OFF).</div>
+        <h2>Daily House Timeline</h2>
+        <div class="muted" style="font-size:12px;margin-bottom:6px">Simulated kWh/hour — all tenants stacked; thicker line = selected household.</div>
+        <canvas id="historyChart"></canvas>
+      </div>
+
+      <div id="circuitSetupCard" class="card" style="display:none" aria-hidden="true">
+        <h2>CircuitSetup CT (per house)</h2>
+        <div id="csSummary" class="muted">Select a house to map it to a CT channel (house meter id mod 6).</div>
+        <div class="cs-charts">
+          <div class="cs-chart-wrap">
+            <h3>Last ~10 minutes (1 s samples)</h3>
+            <canvas id="csChart10m"></canvas>
+          </div>
+          <div class="cs-chart-wrap">
+            <h3>Last ~30 seconds (0.5 s samples)</h3>
+            <canvas id="csChart30s"></canvas>
+          </div>
+        </div>
+        <div id="csDiagHint" class="map-help"></div>
+        <pre id="csDiag" class="diag">Waiting for selection…</pre>
+      </div>
+
+      <div class="card">
+        <h2>Tenant Controls</h2>
+        <div class="muted">Board 0 channels 0-7 drive the IoTMug I2C SSR board (tenant supply).</div>
+        <div class="map-help">Houses: <strong>● Meter</strong> = CircuitSetup chip for that CT online; <strong>○ Meter</strong> = offline. <strong>Green / red</strong> = tenant SSR ON / OFF (brighter when meter online, muted when offline). <strong>Cyan ring / cyan 3D</strong> = CT current on that channel.</div>
         <div id="relayStatus" class="muted"></div>
         <div id="meterList" class="meter-list"></div>
       </div>
@@ -70,13 +162,122 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
   <script>
-    let state = { payload: null, selectedBoard: 0, selectedMeter: 0 };
+    /** Public token (pk.*) — restrict by URL in Mapbox account; rotate if leaked. */
+    mapboxgl.accessToken = "pk.eyJ1IjoiZWFydGhhZGFtIiwiYSI6ImNtb2J5Mjg2ajA1aWcycXExc2Y1Mjc4angifQ.qI9c6W7-vi5qnNIUq93Dmg";
+
+    let state = { payload: null, selectedBoard: 0, selectedMeter: 0, csPanelFromHouse: false };
+    /** GeoJSON / JSON may encode relay as bool, 0/1, or strings — treat all as ON. */
+    const MAP_RELAY_ON = ["any",
+      ["==", ["get", "relayState"], true],
+      ["==", ["get", "relayState"], "true"],
+      ["==", ["get", "relayState"], 1],
+      ["==", ["get", "relayState"], "1"]
+    ];
+    /** Only auto–fit bounds once; periodic refresh must not fight user zoom/pan. */
+    let mapInitialFitDone = false;
     let map;
     let mapInitialized = false;
     let chart;
+    let chartCs10m;
+    let chartCs30s;
     let lastBounds;
+    let layerStackUiDone = false;
+
+    const MAP_LAYER_STACK_TOP_FIRST = [
+      { id: "house-label-layer", label: "House labels", color: "#f8fafc" },
+      { id: "house-layer", label: "House nodes (pick targets)", color: "#22c55e" },
+      { id: "line-air-ribbon", label: "Feeder aerial (3D)", color: "#f59e0b" },
+      { id: "court-air-ribbon", label: "Court aerial (3D)", color: "#fbbf24" },
+      { id: "pole-layer", label: "Pole marker", color: "#4ade80" },
+      { id: "pole-extrusion-3d", label: "Pole mast (3D)", color: "#166534" },
+      { id: "house-extrusion-3d", label: "Houses (3D)", color: "#15803d" },
+      { id: "line-layer", label: "Feeder line (ground)", color: "#d97706" },
+      { id: "court-layer", label: "Court path (ground)", color: "#ca8a04" },
+      { id: "satellite", label: "Mapbox satellite imagery", color: "#475569" }
+    ];
+
+    function buildLayerStackUI() {
+      const host = document.getElementById("layerStack");
+      if (!host || layerStackUiDone) {
+        return;
+      }
+      layerStackUiDone = true;
+      host.innerHTML = "";
+      const viz = document.getElementById("layerStackViz");
+      if (viz && !viz.querySelector("span")) {
+        for (let i = MAP_LAYER_STACK_TOP_FIRST.length - 1; i >= 0; i--) {
+          const bar = document.createElement("span");
+          bar.style.background = MAP_LAYER_STACK_TOP_FIRST[i].color;
+          bar.title = MAP_LAYER_STACK_TOP_FIRST[i].label;
+          viz.appendChild(bar);
+        }
+      }
+      MAP_LAYER_STACK_TOP_FIRST.forEach((def) => {
+        const row = document.createElement("div");
+        row.className = "layer-row";
+        const cid = "layer-toggle-" + def.id.replace(/[^a-z0-9-]/gi, "-");
+        row.innerHTML =
+          "<span class=\"layer-swatch\" style=\"background:" + def.color + "\"></span>" +
+          "<label for=\"" + cid + "\"><input type=\"checkbox\" id=\"" + cid + "\" checked data-layer=\"" +
+          def.id + "\"> " + def.label + "</label>";
+        host.appendChild(row);
+        row.querySelector("input").addEventListener("change", (ev) => {
+          const lid = ev.target.getAttribute("data-layer");
+          if (!map || !map.getLayer(lid)) {
+            return;
+          }
+          map.setLayoutProperty(lid, "visibility", ev.target.checked ? "visible" : "none");
+        });
+      });
+    }
+
+    function syncMeterFeatureState() {
+      if (!map || !mapInitialized || !state.payload) {
+        return;
+      }
+      const src = "utility-geojson";
+      state.payload.boards.forEach((board) => {
+        const chips = state.payload.circuitSetupChipsOk || [];
+        board.meters.forEach((m) => {
+          const live =
+            typeof m.liveAmps === "number" && Math.abs(m.liveAmps) > 0.03 ? 1 : 0;
+          const ctCh =
+            typeof m.ctChannel === "number" ? m.ctChannel : (Number(m.meterId) % 6 + 6) % 6;
+          const chipIdx = Math.floor(ctCh / 3);
+          const meterOk = chips[chipIdx] === true ? 1 : 0;
+          const selected =
+            Number(board.boardId) === Number(state.selectedBoard) &&
+            Number(m.meterId) === Number(state.selectedMeter)
+              ? 1
+              : 0;
+          const hid = "hn-" + board.boardId + "-" + m.meterId;
+          const sid = "hs-" + board.boardId + "-" + m.meterId;
+          try {
+            map.setFeatureState({ source: src, id: hid }, { ctLive: live, meterOk: meterOk, selected: selected });
+            map.setFeatureState({ source: src, id: sid }, { ctLive: live, meterOk: meterOk, selected: selected });
+          } catch (e) { /* ignore */ }
+        });
+        const hub = Array.isArray(chips) && chips.some(Boolean) ? 1 : 0;
+        try {
+          map.setFeatureState({ source: src, id: "pn-" + board.boardId }, { hubLive: hub });
+        } catch (e) { /* ignore */ }
+      });
+    }
+
+    const HISTORY_TENANT_COLORS = [
+      "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#2dd4bf",
+      "#fb7185", "#818cf8", "#4ade80", "#f97316"
+    ];
+
+    function hexToRgba(hex, alpha) {
+      const h = hex.replace("#", "");
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+    }
 
     function buildChart() {
       const ctx = document.getElementById("historyChart").getContext("2d");
@@ -84,10 +285,209 @@
         type: "line",
         data: {
           labels: Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0") + ":00"),
-          datasets: [{ label: "kWh", data: [], borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.25)", fill: true, tension: 0.2 }]
+          datasets: []
         },
-        options: { responsive: true, plugins: { legend: { labels: { color: "#e2e8f0" } } }, scales: { x: { ticks: { color: "#cbd5e1" } }, y: { ticks: { color: "#cbd5e1" } } } }
+        options: {
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              labels: { color: "#e2e8f0", boxWidth: 10, font: { size: 10 } },
+              position: "bottom"
+            },
+            tooltip: {
+              callbacks: {
+                label: (c) => (c.dataset.label || "") + ": " + (c.parsed.y != null ? c.parsed.y.toFixed(2) : "") + " kWh/h"
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: "#cbd5e1", maxRotation: 45 } },
+            y: {
+              ticks: { color: "#cbd5e1" },
+              title: { display: true, text: "kWh / hour (sim)", color: "#94a3b8" },
+              stacked: false
+            }
+          }
+        }
       });
+    }
+
+    function updateHistoryChart() {
+      if (!chart || !state.payload) {
+        return;
+      }
+      const board = getBoard(state.selectedBoard);
+      if (!board || !board.meters.length) {
+        return;
+      }
+      const n = board.meters.length;
+      chart.data.datasets = board.meters.map((m, idx) => {
+        const col = HISTORY_TENANT_COLORS[idx % HISTORY_TENANT_COLORS.length];
+        const isSel = Number(m.meterId) === Number(state.selectedMeter);
+        return {
+          label: m.tenantLabel || ("M" + m.meterId),
+          data: (m.historyKwhByHour || []).slice(),
+          borderColor: col,
+          backgroundColor: hexToRgba(col, isSel ? 0.22 : 0.1),
+          fill: true,
+          tension: 0.28,
+          borderWidth: isSel ? 3.2 : 1.4,
+          pointRadius: 0,
+          order: isSel ? 100 + idx : idx
+        };
+      });
+      chart.update("none");
+    }
+
+    const csChartCommonOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: "#e2e8f0" } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const y = ctx.parsed.y;
+              return (y != null && !Number.isNaN(y)) ? y.toFixed(3) + " A" : "";
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
+        y: { ticks: { color: "#94a3b8" }, title: { display: true, text: "A", color: "#64748b" } }
+      }
+    };
+
+    function buildCsCharts() {
+      if (chartCs10m) {
+        return;
+      }
+      chartCs10m = new Chart(document.getElementById("csChart10m").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [{
+            label: "CT current",
+            data: [],
+            borderColor: "#a78bfa",
+            backgroundColor: "rgba(167,139,250,0.2)",
+            fill: true,
+            tension: 0.15,
+            pointRadius: 0
+          }]
+        },
+        options: csChartCommonOptions
+      });
+      chartCs30s = new Chart(document.getElementById("csChart30s").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [{
+            label: "CT current",
+            data: [],
+            borderColor: "#34d399",
+            backgroundColor: "rgba(52,211,153,0.2)",
+            fill: true,
+            tension: 0.1,
+            pointRadius: 0
+          }]
+        },
+        options: csChartCommonOptions
+      });
+    }
+
+    function csLabelsLong(n, intervalSec) {
+      const labels = [];
+      for (let i = 0; i < n; i++) {
+        const secAgo = (n - 1 - i) * intervalSec;
+        labels.push(secAgo % 60 === 0 ? "-" + (secAgo / 60) + "m" : "");
+      }
+      return labels;
+    }
+
+    function csLabelsShort(n, intervalSec) {
+      const labels = [];
+      for (let i = 0; i < n; i++) {
+        const secAgo = (n - 1 - i) * intervalSec;
+        labels.push(secAgo >= 1 ? "-" + secAgo.toFixed(1) + "s" : "now");
+      }
+      return labels;
+    }
+
+    function updateCircuitSetupCardVisibility() {
+      const el = document.getElementById("circuitSetupCard");
+      if (!el) {
+        return;
+      }
+      const show = state.csPanelFromHouse === true;
+      el.style.display = show ? "" : "none";
+      el.setAttribute("aria-hidden", show ? "false" : "true");
+    }
+
+    async function refreshCircuitSetup() {
+      if (!state.csPanelFromHouse) {
+        return;
+      }
+      buildCsCharts();
+      const house = state.selectedMeter;
+      const diagEl = document.getElementById("csDiag");
+      const hintEl = document.getElementById("csDiagHint");
+      try {
+        const res = await fetch("/api/circuitsetup?house=" + house);
+        if (!res.ok) {
+          throw new Error("HTTP " + res.status);
+        }
+        const d = await res.json();
+        const ct = d.ctLabel || ("CT" + (d.ctChannel + 1));
+        const latest = typeof d.latestAmps === "number" ? d.latestAmps.toFixed(3) : "?";
+        document.getElementById("csSummary").textContent =
+          ct + " ← house meter " + house + " (mod 6) | phase " + (d.phaseLetter || "?") +
+          " on chip " + (d.chipIndex != null ? d.chipIndex : "?") + " | latest " + latest + " A";
+
+        const longData = Array.isArray(d.longAmps) ? d.longAmps : [];
+        const shortData = Array.isArray(d.shortAmps) ? d.shortAmps : [];
+        chartCs10m.data.labels = csLabelsLong(longData.length, (d.intervalLongMs || 1000) / 1000);
+        chartCs10m.data.datasets[0].data = longData;
+        chartCs10m.update("none");
+
+        chartCs30s.data.labels = csLabelsShort(shortData.length, (d.intervalShortMs || 500) / 1000);
+        chartCs30s.data.datasets[0].data = shortData;
+        chartCs30s.update("none");
+
+        const diag = d.diagnostics || {};
+        const chips = diag.chips || [];
+        const hintParts = [];
+        let seriousHint = false;
+        if (Array.isArray(d.latestAllAmps)) {
+          const active = d.latestAllAmps.map((a, i) => (Math.abs(a) > 0.02 ? "CT" + (i + 1) : null)).filter(Boolean);
+          if (active.length) {
+            hintParts.push("Non-zero now: " + active.join(", ") + ".");
+          }
+        }
+        chips.forEach((c, idx) => {
+          if (c.initOk === false) {
+            seriousHint = true;
+            hintParts.push("Chip " + idx + " (CS GPIO " + c.csGpio + ") failed init — check wiring/SPI CS vs CAN/OLED.");
+          } else if ((c.voltageA || 0) < 5 && (c.voltageB || 0) < 5 && (c.voltageC || 0) < 5) {
+            seriousHint = true;
+            hintParts.push("Chip " + idx + " line voltages ~0 — meter may lack Vref / line voltage inputs or phase loss.");
+          }
+        });
+        if (diag.hint) {
+          hintParts.push(diag.hint);
+        }
+        hintEl.textContent = hintParts.join(" ");
+        hintEl.className = "map-help" + (seriousHint ? " diag-warn" : "");
+
+        diagEl.textContent = JSON.stringify(diag, null, 2);
+        diagEl.className = "diag" + (seriousHint ? " diag-warn" : " diag-ok");
+      } catch (e) {
+        hintEl.textContent = "";
+        diagEl.textContent = "CircuitSetup API error: " + e.message;
+        diagEl.className = "diag diag-err";
+      }
     }
 
     function getBoard(boardId) {
@@ -102,7 +502,9 @@
     async function refreshData() {
       const res = await fetch("/api/dashboard");
       state.payload = await res.json();
-      document.getElementById("siteMeta").textContent = "Site " + state.payload.siteId + " | last update " + new Date().toLocaleTimeString();
+      document.getElementById("siteMeta").textContent =
+        "Site " + state.payload.siteId + " | source " + (state.payload.meterSource || "—") +
+        " | last update " + new Date().toLocaleTimeString();
       renderRelays();
       renderSelection();
       upsertMapLayers();
@@ -110,13 +512,36 @@
 
     function renderSelection() {
       const meter = getMeter(state.selectedBoard, state.selectedMeter);
-      if (!meter) {
-        return;
+      if (meter) {
+        const liveLine =
+          typeof meter.liveAmps === "number"
+            ? " | " + (meter.ctLabel || ("CT" + ((meter.meterId % 6) + 1))) + " " + meter.liveAmps.toFixed(2) + " A · " +
+              meter.liveVolts.toFixed(1) + " V · ~" + meter.liveKwEst.toFixed(3) + " kW"
+            : "";
+        const ctBadge =
+          typeof meter.liveAmps === "number" && Math.abs(meter.liveAmps) > 0.03
+            ? " [CT live]"
+            : " [CT idle]";
+        const chipsOk = state.payload.circuitSetupChipsOk || [];
+        const ctCh =
+          typeof meter.ctChannel === "number"
+            ? meter.ctChannel
+            : ((Number(meter.meterId) % 6) + 6) % 6;
+        const meterChipOk = chipsOk[Math.floor(ctCh / 3)] === true;
+        const meterBadge = meterChipOk ? " [Meter online]" : " [Meter offline]";
+        document.getElementById("selectionSummary").textContent =
+          "Board " + state.selectedBoard + " | " + meter.tenantLabel + " | Meter " + meter.meterId + meterBadge + ctBadge +
+          " | Daily " + meter.dailyKwhTotal.toFixed(2) + " kWh (sim)" + liveLine + " | Tenant SSR " + (meter.relayState ? "ON" : "OFF");
+        if (state.csPanelFromHouse) {
+          refreshCircuitSetup();
+        }
+      } else {
+        document.getElementById("selectionSummary").textContent =
+          "Board " + state.selectedBoard + " — click a house on the map or a row in Tenant Controls.";
       }
-      document.getElementById("selectionSummary").textContent =
-        "Board " + state.selectedBoard + " | " + meter.tenantLabel + " | Meter " + meter.meterId + " | Daily " + meter.dailyKwhTotal.toFixed(2) + " kWh | Relay " + (meter.relayState ? "ON" : "OFF");
-      chart.data.datasets[0].data = meter.historyKwhByHour;
-      chart.update();
+      updateHistoryChart();
+      syncMeterFeatureState();
+      updateCircuitSetupCardVisibility();
     }
 
     function renderRelays() {
@@ -127,14 +552,38 @@
       const list = document.getElementById("meterList");
       list.innerHTML = "";
 
+      const chipsOk = state.payload.circuitSetupChipsOk || [];
       board.meters.forEach((meter) => {
         const row = document.createElement("div");
         row.className = "meter-row";
-        row.innerHTML = "<div>" + meter.tenantLabel + " (M" + meter.meterId + ")<br><span class='muted'>" + meter.dailyKwhTotal.toFixed(2) + " kWh/day</span></div>";
+        const live =
+          typeof meter.liveAmps === "number"
+            ? meter.liveAmps.toFixed(2) + " A · " + meter.liveVolts.toFixed(0) + " V · ~" + meter.liveKwEst.toFixed(2) + " kW · "
+            : "";
+        const ctCh =
+          typeof meter.ctChannel === "number"
+            ? meter.ctChannel
+            : ((Number(meter.meterId) % 6) + 6) % 6;
+        const meterChipOk = chipsOk[Math.floor(ctCh / 3)] === true;
+        const meterOn =
+          meterChipOk
+            ? "<span class='status-ok' style='font-size:11px;margin-left:4px'>● Meter</span>"
+            : "<span class='diag-err' style='font-size:11px;margin-left:4px'>○ Meter</span>";
+        const ctOn =
+          typeof meter.liveAmps === "number" && Math.abs(meter.liveAmps) > 0.03
+            ? "<span class='status-ok' style='display:inline;margin-left:4px'>● CT</span>"
+            : "<span class='muted' style='font-size:11px;margin-left:4px'>○ CT</span>";
+        row.innerHTML =
+          "<div>" + meter.tenantLabel + " (M" + meter.meterId + ") " + (meter.ctLabel || "") + meterOn + ctOn +
+          "<br><span class='muted'>" + live + meter.dailyKwhTotal.toFixed(2) + " kWh/day sim</span></div>";
+        if (Number(meter.meterId) === Number(state.selectedMeter)) {
+          row.classList.add("meter-row-selected");
+        }
         const btn = document.createElement("button");
         btn.className = meter.relayState ? "turn-off" : "turn-on";
         btn.textContent = meter.relayState ? "TURN OFF" : "TURN ON";
-        btn.onclick = async () => {
+        btn.onclick = async (ev) => {
+          ev.stopPropagation();
           const status = document.getElementById("relayStatus");
           const next = meter.relayState ? 0 : 1;
           try {
@@ -148,11 +597,16 @@
             await refreshData();
           } catch (err) {
             status.className = "status-err";
-            status.textContent = "Relay command failed: " + err.message;
+            status.textContent = "Tenant control failed: " + err.message;
           }
         };
         row.appendChild(btn);
-        row.onclick = () => { state.selectedMeter = meter.meterId; renderSelection(); };
+        row.onclick = () => {
+          state.selectedMeter = meter.meterId;
+          state.csPanelFromHouse = true;
+          renderRelays();
+          renderSelection();
+        };
         list.appendChild(row);
       });
     }
@@ -161,28 +615,15 @@
       if (map) {
         return;
       }
-      map = new maplibregl.Map({
+      map = new mapboxgl.Map({
         container: "map",
-        style: {
-          version: 8,
-          sources: {
-            esriSatellite: {
-              type: "raster",
-              tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-              tileSize: 256,
-              attribution: "Esri World Imagery"
-            }
-          },
-          layers: [
-            { id: "esriSatellite", type: "raster", source: "esriSatellite" }
-          ]
-        },
+        style: "mapbox://styles/mapbox/satellite-streets-v12",
         center: [state.payload.villageCenter.lon, state.payload.villageCenter.lat],
         zoom: state.payload.villageCenter.zoom,
         pitch: 35,
         maxPitch: 60
       });
-      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-left");
       map.on("load", () => {
         mapInitialized = true;
         upsertMapLayers();
@@ -204,21 +645,112 @@
           type: "line",
           source: sourceId,
           filter: ["==", ["get", "assetType"], "court"],
-          paint: { "line-color": "#fbbf24", "line-width": 2, "line-opacity": 0.85 }
+          paint: { "line-color": "#fbbf24", "line-width": 2, "line-opacity": 0.75 }
         });
         map.addLayer({
           id: "line-layer",
           type: "line",
           source: sourceId,
           filter: ["==", ["get", "assetType"], "line"],
-          paint: { "line-color": "#f59e0b", "line-width": 4 }
+          paint: { "line-color": "#f59e0b", "line-width": 3, "line-opacity": 0.75 }
+        });
+        map.addLayer({
+          id: "house-extrusion-3d",
+          type: "fill-extrusion",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "houseExtrusion"],
+          paint: {
+            "fill-extrusion-color": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              "#fde68a",
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              "#0e7490",
+              [
+                "case",
+                MAP_RELAY_ON,
+                [
+                  "case",
+                  ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                  "#2d4a36",
+                  "#15803d"
+                ],
+                [
+                  "case",
+                  ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                  "#5c2626",
+                  "#b91c1c"
+                ]
+              ]
+            ],
+            "fill-extrusion-base": ["get", "extrudeBase"],
+            "fill-extrusion-height": ["get", "extrudeHeight"],
+            "fill-extrusion-opacity": 0.9
+          }
+        });
+        map.addLayer({
+          id: "pole-extrusion-3d",
+          type: "fill-extrusion",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "poleExtrusion"],
+          paint: {
+            "fill-extrusion-color": "#166534",
+            "fill-extrusion-base": ["get", "extrudeBase"],
+            "fill-extrusion-height": ["get", "extrudeHeight"],
+            "fill-extrusion-opacity": 0.82
+          }
+        });
+        map.addLayer({
+          id: "court-air-ribbon",
+          type: "fill-extrusion",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "courtAir"],
+          paint: {
+            "fill-extrusion-color": "#fbbf24",
+            "fill-extrusion-base": ["get", "extrudeBase"],
+            "fill-extrusion-height": ["get", "extrudeHeight"],
+            "fill-extrusion-opacity": 0.92
+          }
+        });
+        map.addLayer({
+          id: "line-air-ribbon",
+          type: "fill-extrusion",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "lineAir"],
+          paint: {
+            "fill-extrusion-color": "#f59e0b",
+            "fill-extrusion-base": ["get", "extrudeBase"],
+            "fill-extrusion-height": ["get", "extrudeHeight"],
+            "fill-extrusion-opacity": 0.92
+          }
         });
         map.addLayer({
           id: "pole-layer",
           type: "circle",
           source: sourceId,
           filter: ["==", ["get", "assetType"], "streetPoleEMS"],
-          paint: { "circle-radius": 9, "circle-color": "#22c55e" }
+          paint: {
+            "circle-radius": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              11,
+              6
+            ],
+            "circle-color": "#4ade80",
+            "circle-opacity": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              0.5,
+              0.32
+            ],
+            "circle-stroke-width": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              2,
+              0
+            ],
+            "circle-stroke-color": "#7dd3fc"
+          }
         });
         map.addLayer({
           id: "house-layer",
@@ -226,20 +758,63 @@
           source: sourceId,
           filter: ["==", ["get", "assetType"], "house"],
           paint: {
-            "circle-radius": 7,
+            "circle-radius": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                8,
+                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+                9,
+                7
+              ],
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                6,
+                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+                7,
+                5
+              ]
+            ],
             "circle-color": [
               "case",
+              MAP_RELAY_ON,
               [
-                "any",
-                ["==", ["get", "relayState"], true],
-                ["==", ["get", "relayState"], "true"],
-                ["==", ["get", "relayState"], 1]
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                "#5a9e6a",
+                "#22c55e"
               ],
-              "#22c55e",
-              "#ef4444"
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                "#a85656",
+                "#ef4444"
+              ]
             ],
-            "circle-stroke-width": 1,
-            "circle-stroke-color": "#0f172a"
+            "circle-opacity": 0.45,
+            "circle-stroke-width": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              4,
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              3,
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              3,
+              1
+            ],
+            "circle-stroke-color": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              "#fef08c",
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              "#fb923c",
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              "#38bdf8",
+              "#0f172a"
+            ]
           }
         });
         map.addLayer({
@@ -250,66 +825,82 @@
           layout: {
             "text-field": ["get", "name"],
             "text-size": 12,
-            "text-offset": [0, 1.1]
+            "text-offset": [0, 1.1],
+            "text-allow-overlap": true
           },
           paint: {
-            "text-color": "#ffffff",
+            "text-color": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              "#fef08c",
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              "#fdba74",
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              "#7dd3fc",
+              "#ffffff"
+            ],
             "text-halo-color": "#0f172a",
             "text-halo-width": 1
           }
         });
-        map.addLayer({
-          id: "pole-extrusion",
-          type: "fill-extrusion",
-          source: sourceId,
-          filter: ["==", ["get", "assetType"], "streetPoleEMS"],
-          paint: {
-            "fill-extrusion-color": "#16a34a",
-            "fill-extrusion-height": ["get", "height_m"],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.6
-          }
+
+        buildLayerStackUI();
+
+        const setHouseCursor = (c) => { map.getCanvas().style.cursor = c || ""; };
+        ["house-layer", "house-extrusion-3d", "house-label-layer"].forEach((lid) => {
+          map.on("mouseenter", lid, () => setHouseCursor("pointer"));
+          map.on("mouseleave", lid, () => setHouseCursor(""));
         });
 
-        map.on("click", "pole-layer", (e) => {
+        const onPoleSelect = (e) => {
           const props = e.features[0].properties;
           state.selectedBoard = Number(props.boardId);
           state.selectedMeter = 0;
+          state.csPanelFromHouse = false;
           renderRelays();
           renderSelection();
-        });
-        map.on("click", "house-layer", (e) => {
+        };
+        const onHouseSelect = (e) => {
           const props = e.features[0].properties;
           state.selectedBoard = Number(props.boardId);
           state.selectedMeter = Number(props.meterId);
+          state.csPanelFromHouse = true;
           renderRelays();
           renderSelection();
-        });
+        };
+
+        map.on("click", "pole-layer", onPoleSelect);
+        map.on("click", "pole-extrusion-3d", onPoleSelect);
+        map.on("click", "house-layer", onHouseSelect);
+        map.on("click", "house-extrusion-3d", onHouseSelect);
+        map.on("click", "house-label-layer", onHouseSelect);
       }
 
       const source = map.getSource(sourceId);
       if (source) {
         source.setData(data);
+        syncMeterFeatureState();
       }
 
       const points = data.features
         .filter((f) => f && f.geometry && f.geometry.type === "Point" && Array.isArray(f.geometry.coordinates))
         .map((f) => f.geometry.coordinates)
         .filter((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
-      if (points.length > 1) {
-        const b = new maplibregl.LngLatBounds(points[0], points[0]);
+      if (points.length > 1 && !mapInitialFitDone) {
+        const b = new mapboxgl.LngLatBounds(points[0], points[0]);
         points.forEach((p) => b.extend([p[0], p[1]]));
         lastBounds = b;
-        if (map.getZoom() < 2 || map.getZoom() > 18) {
-          map.fitBounds(b, { padding: 80, duration: 0, maxZoom: 18 });
-        }
+        map.fitBounds(b, { padding: 80, duration: 0, maxZoom: 18 });
+        mapInitialFitDone = true;
       }
     }
 
     async function bootstrap() {
       buildChart();
+      buildCsCharts();
       await refreshData();
-      setInterval(refreshData, 4000);
+      setInterval(refreshData, 2000);
+      setInterval(refreshCircuitSetup, 1000);
     }
 
     bootstrap().catch((err) => {

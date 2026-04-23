@@ -100,6 +100,7 @@ last_bandwidth_report_time  time in secs since last report
 #include <i2c_ssr_bank.h>
 #include <sunspec_model_11.h>    
 #include <ems_env_model.h>    
+#include "pins.h"
 //#include "modbus_devices.h"             // added by Kevin - future use
 #include "data_model.h"
 #define ENABLE_DEBUG_MQTT = 1
@@ -263,6 +264,27 @@ void mqtt_publish_EMS_ENV(String EMSId, long timestamp) {
   EMS_ENV_Model EMS_ENV_cache;
   EMS_ENV_cache.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
+  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+}
+
+void mqtt_publish_CircuitSetup(long timestamp) {
+  String topicBuf = "subpanel_circuitsetup";
+  JsonDocument jsonDoc;
+
+  // Publish mapping/state metadata so this new meter path is visible in MQTT like other telemetry.
+  jsonDoc["enabled"] = true;
+  jsonDoc["spiMosi"] = CIRCUITSETUP_SPI_MOSI;
+  jsonDoc["spiMiso"] = CIRCUITSETUP_SPI_MISO;
+  jsonDoc["spiSck"] = CIRCUITSETUP_SPI_SCK;
+  jsonDoc["meterCsA"] = CIRCUITSETUP_METER_CS_A;
+  jsonDoc["meterCsB"] = CIRCUITSETUP_METER_CS_B;
+  jsonDoc["irq0"] = CIRCUITSETUP_IRQ0;
+  jsonDoc["irq1"] = CIRCUITSETUP_IRQ1;
+  jsonDoc["channels"] = 6;
+  jsonDoc["meterIc"] = "ATM90E32";
+  jsonDoc["wiringVerified"] = false;
+  jsonDoc["timestamp"] = timestamp;
+
   mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
 }
 void mqtt_publish_Harmonics(String EMSId, long timestamp) { // TODO pass EMSdata structured model
@@ -586,6 +608,9 @@ void loop_mqtt() {
       // TODO integrate shock and  loud noise and possily street pole image snapsot on demand from mqtt command
       mqtt_publish_EMS_ENV("", loop_timestamp);
       Serial.println("Published subpanel environmental data");
+
+      mqtt_publish_CircuitSetup(loop_timestamp);
+      Serial.println("Published CircuitSetup meter mapping");
       
     // TODO Next publish Sunspec model xyz subpanel DER nameplate capacity  rating 
       // mqtt_publish_EMS_Rated("", readings[0]);  //publish Sunspec model xyza rating details

@@ -16,7 +16,7 @@
 #pragma once
 
 // Board Version 1 - 2025 
-#ifdef defined(BOARD_VER_V1)
+#if defined(BOARD_VER_V1)
     // analog button array (voltage divider)
     #ifdef CONFIG_IDF_TARGET_ESP32S3
         #define ANALOG_BTN_PIN  A0 //GPIO1
@@ -45,7 +45,7 @@
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR
 
 // Board Version 2 - 2025 
-elif defined(BOARD_VER_V2)
+#elif defined(BOARD_VER_V2)
     // analog button array (voltage divider)
     #ifdef CONFIG_IDF_TARGET_ESP32S3
         #define ANALOG_BTN_PIN  A0 //GPIO1
@@ -122,4 +122,38 @@ elif defined(BOARD_VER_V2)
     #define CAN0_SI     41  //SPI MOSI
     #define CAN0_SCK    8   //SPI clock
     #define CAN0_INT    17  //Message interrupt output
+
+    // ==================== CIRCUITSETUP 6-CT ENERGY METER ============
+    // Shared SPI with CAN; two ATM90E32 devices (3 CT inputs each). Silk: "CS" and "CS-2".
+    // Verify GPIOs against EMS 865B netlist.
+    #define CIRCUITSETUP_SPI_MOSI     CAN0_SI
+    #define CIRCUITSETUP_SPI_MISO     CAN0_SO
+    #define CIRCUITSETUP_SPI_SCK      CAN0_SCK
+    #define CIRCUITSETUP_METER_CS_A   39  // Primary CS — CT1–CT3
+    #define CIRCUITSETUP_METER_CS_B   40  // CS-2 — CT4–CT6
+    #define CIRCUITSETUP_IRQ0         18
+    #define CIRCUITSETUP_IRQ1         21
+#endif
+
+// Fallback defaults for lint-only builds where BOARD_VER_* is undefined.
+#ifndef CIRCUITSETUP_SPI_MOSI
+#define CIRCUITSETUP_SPI_MOSI 41
+#endif
+#ifndef CIRCUITSETUP_SPI_MISO
+#define CIRCUITSETUP_SPI_MISO 42
+#endif
+#ifndef CIRCUITSETUP_SPI_SCK
+#define CIRCUITSETUP_SPI_SCK 8
+#endif
+#ifndef CIRCUITSETUP_METER_CS_A
+#define CIRCUITSETUP_METER_CS_A 39
+#endif
+#ifndef CIRCUITSETUP_METER_CS_B
+#define CIRCUITSETUP_METER_CS_B 40
+#endif
+#ifndef CIRCUITSETUP_IRQ0
+#define CIRCUITSETUP_IRQ0 18
+#endif
+#ifndef CIRCUITSETUP_IRQ1
+#define CIRCUITSETUP_IRQ1 21
 #endif
