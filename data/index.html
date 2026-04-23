@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>StreetPoleEMS Village Dashboard</title>
-  <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
   <style>
     body { margin: 0; background: #0f172a; color: #e2e8f0; font-family: Arial, sans-serif; }
     .app { display: grid; grid-template-columns: 2fr 1fr; min-height: 100vh; }
@@ -22,7 +22,6 @@
       border-bottom: 1px solid #334155; border-radius: 8px; cursor: pointer;
     }
     .meter-row:last-child { border-bottom: none; }
-    .meter-row:hover { background: rgba(148, 163, 184, 0.08); }
     .meter-row-selected {
       background: rgba(56, 189, 248, 0.14);
       outline: 2px solid #38bdf8;
@@ -104,6 +103,55 @@
       opacity: 0.92;
       box-shadow: 0 -1px 0 rgba(0,0,0,0.35);
     }
+    body.cs-modal-open { overflow: hidden; }
+    .cs-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .cs-modal.is-open { display: flex; }
+    .cs-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.75);
+      cursor: pointer;
+    }
+    .cs-modal-content {
+      position: relative;
+      z-index: 1;
+      width: min(920px, 100%);
+      max-height: min(92vh, 920px);
+      overflow-y: auto;
+      margin: 0;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .cs-modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .cs-modal-header h2 { margin: 0; font-size: 1.15rem; }
+    .cs-modal-close {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      font-size: 1.5rem;
+      line-height: 1;
+      background: #334155;
+      color: #e2e8f0;
+      cursor: pointer;
+      padding: 0;
+      border: none;
+    }
+    .cs-modal-close:hover { background: #475569; color: #fff; }
   </style>
 </head>
 <body>
@@ -125,30 +173,13 @@
           <div id="layerStackViz" class="layer-stack-viz" title="Layer cake (bottom = basemap)"></div>
           <div id="layerStack" class="layer-stack" style="flex:1"></div>
         </div>
-        <div class="layer-stack-note">Mapbox satellite-streets basemap at bottom; EMS overlays stack above.</div>
+        <div class="layer-stack-note">MapLibre basemap at bottom; EMS overlays stack above.</div>
       </div>
 
       <div class="card">
         <h2>Daily House Timeline</h2>
         <div class="muted" style="font-size:12px;margin-bottom:6px">Simulated kWh/hour — all tenants stacked; thicker line = selected household.</div>
         <canvas id="historyChart"></canvas>
-      </div>
-
-      <div id="circuitSetupCard" class="card" style="display:none" aria-hidden="true">
-        <h2>CircuitSetup CT (per house)</h2>
-        <div id="csSummary" class="muted">Select a house to map it to a CT channel (house meter id mod 6).</div>
-        <div class="cs-charts">
-          <div class="cs-chart-wrap">
-            <h3>Last ~10 minutes (1 s samples)</h3>
-            <canvas id="csChart10m"></canvas>
-          </div>
-          <div class="cs-chart-wrap">
-            <h3>Last ~30 seconds (0.5 s samples)</h3>
-            <canvas id="csChart30s"></canvas>
-          </div>
-        </div>
-        <div id="csDiagHint" class="map-help"></div>
-        <pre id="csDiag" class="diag">Waiting for selection…</pre>
       </div>
 
       <div class="card">
@@ -161,13 +192,36 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
-  <script>
-    /** Public token (pk.*) — restrict by URL in Mapbox account; rotate if leaked. */
-    mapboxgl.accessToken = "pk.eyJ1IjoiZWFydGhhZGFtIiwiYSI6ImNtb2J5Mjg2ajA1aWcycXExc2Y1Mjc4angifQ.qI9c6W7-vi5qnNIUq93Dmg";
+  <div id="circuitSetupModal" class="cs-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csModalTitle">
+    <div class="cs-modal-backdrop" id="circuitSetupModalBackdrop"></div>
+    <div class="cs-modal-content card">
+      <div class="cs-modal-header">
+        <h2 id="csModalTitle">CircuitSetup CT (per house)</h2>
+        <button type="button" id="circuitSetupModalClose" class="cs-modal-close" aria-label="Close">×</button>
+      </div>
+      <div id="csSummary" class="muted">Select a house on the map or a tenant row to open this dialog.</div>
+      <div class="cs-charts">
+        <div class="cs-chart-wrap">
+          <h3>Last ~10 minutes (1 s samples)</h3>
+          <canvas id="csChart10m"></canvas>
+        </div>
+        <div class="cs-chart-wrap">
+          <h3>Last ~30 seconds (0.5 s samples)</h3>
+          <canvas id="csChart30s"></canvas>
+        </div>
+      </div>
+      <div id="csDiagHint" class="map-help"></div>
+      <pre id="csDiag" class="diag">Waiting for selection…</pre>
+    </div>
+  </div>
 
-    let state = { payload: null, selectedBoard: 0, selectedMeter: 0, csPanelFromHouse: false };
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.js"></script>
+  <script>
+    /** Free vector basemap (no token). OpenFreeMap serves JSON at /styles/{name} — not .../style.json. */
+    const MAPLIBRE_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+
+    let state = { payload: null, selectedBoard: 0, selectedMeter: 0, circuitSetupModalOpen: false };
     /** GeoJSON / JSON may encode relay as bool, 0/1, or strings — treat all as ON. */
     const MAP_RELAY_ON = ["any",
       ["==", ["get", "relayState"], true],
@@ -175,6 +229,10 @@
       ["==", ["get", "relayState"], 1],
       ["==", ["get", "relayState"], "1"]
     ];
+    /** Oblique startup view (not nadir). Re-applied after fitBounds. */
+    const MAP_INITIAL_PITCH = 56;
+    const MAP_INITIAL_BEARING = -42;
+
     /** Only auto–fit bounds once; periodic refresh must not fight user zoom/pan. */
     let mapInitialFitDone = false;
     let map;
@@ -195,7 +253,7 @@
       { id: "house-extrusion-3d", label: "Houses (3D)", color: "#15803d" },
       { id: "line-layer", label: "Feeder line (ground)", color: "#d97706" },
       { id: "court-layer", label: "Court path (ground)", color: "#ca8a04" },
-      { id: "satellite", label: "Mapbox satellite imagery", color: "#475569" }
+      { id: "satellite", label: "MapLibre basemap (Liberty)", color: "#475569" }
     ];
 
     function buildLayerStackUI() {
@@ -295,11 +353,7 @@
               labels: { color: "#e2e8f0", boxWidth: 10, font: { size: 10 } },
               position: "bottom"
             },
-            tooltip: {
-              callbacks: {
-                label: (c) => (c.dataset.label || "") + ": " + (c.parsed.y != null ? c.parsed.y.toFixed(2) : "") + " kWh/h"
-              }
-            }
+            tooltip: { enabled: false }
           },
           scales: {
             x: { ticks: { color: "#cbd5e1", maxRotation: 45 } },
@@ -345,14 +399,7 @@
       maintainAspectRatio: false,
       plugins: {
         legend: { labels: { color: "#e2e8f0" } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const y = ctx.parsed.y;
-              return (y != null && !Number.isNaN(y)) ? y.toFixed(3) + " A" : "";
-            }
-          }
-        }
+        tooltip: { enabled: false }
       },
       scales: {
         x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
@@ -416,18 +463,40 @@
       return labels;
     }
 
-    function updateCircuitSetupCardVisibility() {
-      const el = document.getElementById("circuitSetupCard");
-      if (!el) {
+    function updateCircuitSetupModalVisibility() {
+      const mod = document.getElementById("circuitSetupModal");
+      if (!mod) {
         return;
       }
-      const show = state.csPanelFromHouse === true;
-      el.style.display = show ? "" : "none";
-      el.setAttribute("aria-hidden", show ? "false" : "true");
+      const open = state.circuitSetupModalOpen === true;
+      mod.classList.toggle("is-open", open);
+      mod.setAttribute("aria-hidden", open ? "false" : "true");
+      document.body.classList.toggle("cs-modal-open", open);
+    }
+
+    function closeCircuitSetupModal() {
+      state.circuitSetupModalOpen = false;
+      updateCircuitSetupModalVisibility();
+    }
+
+    function openCircuitSetupModal() {
+      state.circuitSetupModalOpen = true;
+      updateCircuitSetupModalVisibility();
+    }
+
+    function wireCircuitSetupModal() {
+      const close = () => closeCircuitSetupModal();
+      document.getElementById("circuitSetupModalClose").addEventListener("click", close);
+      document.getElementById("circuitSetupModalBackdrop").addEventListener("click", close);
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && state.circuitSetupModalOpen) {
+          close();
+        }
+      });
     }
 
     async function refreshCircuitSetup() {
-      if (!state.csPanelFromHouse) {
+      if (!state.circuitSetupModalOpen) {
         return;
       }
       buildCsCharts();
@@ -532,7 +601,7 @@
         document.getElementById("selectionSummary").textContent =
           "Board " + state.selectedBoard + " | " + meter.tenantLabel + " | Meter " + meter.meterId + meterBadge + ctBadge +
           " | Daily " + meter.dailyKwhTotal.toFixed(2) + " kWh (sim)" + liveLine + " | Tenant SSR " + (meter.relayState ? "ON" : "OFF");
-        if (state.csPanelFromHouse) {
+        if (state.circuitSetupModalOpen) {
           refreshCircuitSetup();
         }
       } else {
@@ -541,7 +610,7 @@
       }
       updateHistoryChart();
       syncMeterFeatureState();
-      updateCircuitSetupCardVisibility();
+      updateCircuitSetupModalVisibility();
     }
 
     function renderRelays() {
@@ -603,7 +672,7 @@
         row.appendChild(btn);
         row.onclick = () => {
           state.selectedMeter = meter.meterId;
-          state.csPanelFromHouse = true;
+          openCircuitSetupModal();
           renderRelays();
           renderSelection();
         };
@@ -615,15 +684,19 @@
       if (map) {
         return;
       }
-      map = new mapboxgl.Map({
+      map = new maplibregl.Map({
         container: "map",
-        style: "mapbox://styles/mapbox/satellite-streets-v12",
+        style: MAPLIBRE_STYLE_URL,
         center: [state.payload.villageCenter.lon, state.payload.villageCenter.lat],
         zoom: state.payload.villageCenter.zoom,
-        pitch: 35,
-        maxPitch: 60
+        pitch: MAP_INITIAL_PITCH,
+        bearing: MAP_INITIAL_BEARING,
+        maxPitch: 72
       });
-      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-left");
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
+      map.on("error", (e) => {
+        console.warn("MapLibre GL error:", e && e.error ? e.error : e);
+      });
       map.on("load", () => {
         mapInitialized = true;
         upsertMapLayers();
@@ -633,9 +706,12 @@
     function upsertMapLayers() {
       ensureMap();
       const sourceId = "utility-geojson";
-      const data = state.payload.utilityGeoJson;
+      const data = state.payload && state.payload.utilityGeoJson;
 
-      if (!mapInitialized) {
+      if (!map || !mapInitialized) {
+        return;
+      }
+      if (!data || !Array.isArray(data.features)) {
         return;
       }
       if (!map.getSource(sourceId)) {
@@ -653,6 +729,126 @@
           source: sourceId,
           filter: ["==", ["get", "assetType"], "line"],
           paint: { "line-color": "#f59e0b", "line-width": 3, "line-opacity": 0.75 }
+        });
+        map.addLayer({
+          id: "pole-layer",
+          type: "circle",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "streetPoleEMS"],
+          paint: {
+            "circle-radius": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              11,
+              6
+            ],
+            "circle-color": "#4ade80",
+            "circle-opacity": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              0.55,
+              0.42
+            ],
+            "circle-stroke-width": [
+              "case",
+              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
+              2,
+              0
+            ],
+            "circle-stroke-color": "#7dd3fc"
+          }
+        });
+        map.addLayer({
+          id: "house-layer",
+          type: "circle",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "house"],
+          paint: {
+            "circle-radius": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                8,
+                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+                9,
+                7
+              ],
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                6,
+                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+                7,
+                5
+              ]
+            ],
+            "circle-color": [
+              "case",
+              MAP_RELAY_ON,
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                "#5a9e6a",
+                "#22c55e"
+              ],
+              [
+                "case",
+                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+                "#a85656",
+                "#ef4444"
+              ]
+            ],
+            "circle-opacity": 0.55,
+            "circle-stroke-width": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              4,
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              3,
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              3,
+              1
+            ],
+            "circle-stroke-color": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              "#fef08c",
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              "#fb923c",
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              "#38bdf8",
+              "#0f172a"
+            ]
+          }
+        });
+        map.addLayer({
+          id: "house-label-layer",
+          type: "symbol",
+          source: sourceId,
+          filter: ["==", ["get", "assetType"], "house"],
+          layout: {
+            "text-field": ["get", "name"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": 12,
+            "text-offset": [0, 1.1],
+            "text-allow-overlap": true
+          },
+          paint: {
+            "text-color": [
+              "case",
+              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
+              "#fef08c",
+              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
+              "#fdba74",
+              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
+              "#7dd3fc",
+              "#ffffff"
+            ],
+            "text-halo-color": "#0f172a",
+            "text-halo-width": 1
+          }
         });
         map.addLayer({
           id: "house-extrusion-3d",
@@ -724,125 +920,6 @@
             "fill-extrusion-opacity": 0.92
           }
         });
-        map.addLayer({
-          id: "pole-layer",
-          type: "circle",
-          source: sourceId,
-          filter: ["==", ["get", "assetType"], "streetPoleEMS"],
-          paint: {
-            "circle-radius": [
-              "case",
-              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
-              11,
-              6
-            ],
-            "circle-color": "#4ade80",
-            "circle-opacity": [
-              "case",
-              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
-              0.5,
-              0.32
-            ],
-            "circle-stroke-width": [
-              "case",
-              [">", ["coalesce", ["feature-state", "hubLive"], 0], 0],
-              2,
-              0
-            ],
-            "circle-stroke-color": "#7dd3fc"
-          }
-        });
-        map.addLayer({
-          id: "house-layer",
-          type: "circle",
-          source: sourceId,
-          filter: ["==", ["get", "assetType"], "house"],
-          paint: {
-            "circle-radius": [
-              "case",
-              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
-              [
-                "case",
-                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-                8,
-                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
-                9,
-                7
-              ],
-              [
-                "case",
-                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-                6,
-                [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
-                7,
-                5
-              ]
-            ],
-            "circle-color": [
-              "case",
-              MAP_RELAY_ON,
-              [
-                "case",
-                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-                "#5a9e6a",
-                "#22c55e"
-              ],
-              [
-                "case",
-                ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-                "#a85656",
-                "#ef4444"
-              ]
-            ],
-            "circle-opacity": 0.45,
-            "circle-stroke-width": [
-              "case",
-              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
-              4,
-              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-              3,
-              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
-              3,
-              1
-            ],
-            "circle-stroke-color": [
-              "case",
-              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
-              "#fef08c",
-              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-              "#fb923c",
-              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
-              "#38bdf8",
-              "#0f172a"
-            ]
-          }
-        });
-        map.addLayer({
-          id: "house-label-layer",
-          type: "symbol",
-          source: sourceId,
-          filter: ["==", ["get", "assetType"], "house"],
-          layout: {
-            "text-field": ["get", "name"],
-            "text-size": 12,
-            "text-offset": [0, 1.1],
-            "text-allow-overlap": true
-          },
-          paint: {
-            "text-color": [
-              "case",
-              [">", ["coalesce", ["feature-state", "selected"], 0], 0],
-              "#fef08c",
-              ["==", ["coalesce", ["feature-state", "meterOk"], 0], 0],
-              "#fdba74",
-              [">", ["coalesce", ["feature-state", "ctLive"], 0], 0],
-              "#7dd3fc",
-              "#ffffff"
-            ],
-            "text-halo-color": "#0f172a",
-            "text-halo-width": 1
-          }
-        });
 
         buildLayerStackUI();
 
@@ -856,7 +933,7 @@
           const props = e.features[0].properties;
           state.selectedBoard = Number(props.boardId);
           state.selectedMeter = 0;
-          state.csPanelFromHouse = false;
+          closeCircuitSetupModal();
           renderRelays();
           renderSelection();
         };
@@ -864,7 +941,7 @@
           const props = e.features[0].properties;
           state.selectedBoard = Number(props.boardId);
           state.selectedMeter = Number(props.meterId);
-          state.csPanelFromHouse = true;
+          openCircuitSetupModal();
           renderRelays();
           renderSelection();
         };
@@ -887,15 +964,18 @@
         .map((f) => f.geometry.coordinates)
         .filter((c) => Number.isFinite(c[0]) && Number.isFinite(c[1]));
       if (points.length > 1 && !mapInitialFitDone) {
-        const b = new mapboxgl.LngLatBounds(points[0], points[0]);
+        const b = new maplibregl.LngLatBounds(points[0], points[0]);
         points.forEach((p) => b.extend([p[0], p[1]]));
         lastBounds = b;
         map.fitBounds(b, { padding: 80, duration: 0, maxZoom: 18 });
+        map.setPitch(MAP_INITIAL_PITCH);
+        map.setBearing(MAP_INITIAL_BEARING);
         mapInitialFitDone = true;
       }
     }
 
     async function bootstrap() {
+      wireCircuitSetupModal();
       buildChart();
       buildCsCharts();
       await refreshData();

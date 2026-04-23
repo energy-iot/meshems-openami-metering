@@ -29,6 +29,9 @@
 // known timeout issues spam the serial log; set to 1 only with a working SHT20 on UART1 RS485.
 #define MODBUS_ENABLE_SHT20 0
 
+/** 1 = Modbus setup / poll / RS485 debug on Serial. 0 = only DATA,... CSV lines (see update() in modbus_master.cpp). */
+#define MODBUS_SERIAL_LOG 0
+
 /** USB serial one-line heartbeat (ms). Independent of Modbus; set 0 to disable STATUS prints. */
 #define SERIAL_STATUS_INTERVAL_MS 3000u
 

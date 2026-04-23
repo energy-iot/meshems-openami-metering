@@ -86,21 +86,18 @@
     #define ANALOG_BTN_PIN  A7
     #endif
 
-    //SPI OLED display
-    //#define DISPLAY_RST_PIN 2
-    //#define DISPLAY_DC_PIN 42
-    //#define DISPLAY_CS_PIN 41
-
+    //SPI OLED display — CircuitSetup `pin_definitions` (ESP32-S3): RST 8, DC 18, CS 17
     // ==================== SPI DISPLAY ====================
-    #define DISPLAY_RST_PIN 46  //Reset
-    #define DISPLAY_DC_PIN 3    //Data clock
-    #define DISPLAY_CS_PIN 9    //Chip select
+    #define DISPLAY_RST_PIN 8   // Reset (was 46; 46 = GPS RX on NESL layout)
+    #define DISPLAY_DC_PIN 18   // Data/Command (was 3; 3 = ETH reset on some builds)
+    #define DISPLAY_CS_PIN 17   // Chip select
 
     // ==================== RS485 INTERFACE ================
-    #define RS485_RX_1             GPIO_NUM_6   // ESP32 RX <- HW-519 TXD
-    #define RS485_TX_1             GPIO_NUM_7   // ESP32 TX -> HW-519 RXD
-    #define RS485_RX_2             GPIO_NUM_15
-    #define RS485_TX_2             GPIO_NUM_16
+    // Match CircuitSetup Modbus A / B (MAX485): A = RX 6, TX 4; B = RX 42, TX 7
+    #define RS485_RX_1             GPIO_NUM_6   // RS485_RX_A
+    #define RS485_TX_1             GPIO_NUM_4   // RS485_TX_A (was 7)
+    #define RS485_RX_2             GPIO_NUM_42  // RS485_RX_B (was 15 — now meter CS1_BOARD1)
+    #define RS485_TX_2             GPIO_NUM_7   // RS485_TX_B (was 16 — now meter CS2_BOARD1)
 
     // ==================== RELAY ==========================
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR, solid state relay - 5 vdc TTL TBD for larger ssr
@@ -117,22 +114,26 @@
     #define PCF8574_I2C_ADDR   0x27
 
     // ==================== CAN INTERFACE ==================
-    #define CAN0_CS     2   //SPI chip select
-    #define CAN0_SO     42  //SPI MISO
-    #define CAN0_SI     41  //SPI MOSI
-    #define CAN0_SCK    8   //SPI clock
-    #define CAN0_INT    17  //Message interrupt output
+    // SPI shares the meter/display bus. NESL/CircuitSetup uses GPIO2 for pairing LED and
+    // GPIO8 for display RST (not SCK); GPIO17 is display CS (not MCP INT). Values below
+    // avoid those conflicts — confirm CS/SCK/INT against your 865A/865B schematic.
+    #define CAN0_CS     10  // SPI chip select (was 2 — GPIO2 is PAIR_LED / CS2_BOARD2 on NESL)
+    #define CAN0_SO     42  // SPI MISO (same net as RS485_RX_B if both used — verify stack)
+    #define CAN0_SI     41  // SPI MOSI (same net as MAX485_RE_DE_TOGGLE_B area on some PCBs)
+    #define CAN0_SCK    12  // SPI clock (was 8 — GPIO8 is DISPLAY_RST_PIN on NESL)
+    #define CAN0_INT    13  // MCP2515 INT (was 17 — GPIO17 is DISPLAY_CS_PIN on NESL)
 
     // ==================== CIRCUITSETUP 6-CT ENERGY METER ============
-    // Shared SPI with CAN; two ATM90E32 devices (3 CT inputs each). Silk: "CS" and "CS-2".
-    // Verify GPIOs against EMS 865B netlist.
+    // Shared SPI with CAN + SH1106. Single 6-CT stack: CS1_BOARD1 / CS2_BOARD1 (3-board
+    // stacks add CS on 47/2/21/19 per CircuitSetup pin_definitions.h).
     #define CIRCUITSETUP_SPI_MOSI     CAN0_SI
     #define CIRCUITSETUP_SPI_MISO     CAN0_SO
     #define CIRCUITSETUP_SPI_SCK      CAN0_SCK
-    #define CIRCUITSETUP_METER_CS_A   39  // Primary CS — CT1–CT3
-    #define CIRCUITSETUP_METER_CS_B   40  // CS-2 — CT4–CT6
-    #define CIRCUITSETUP_IRQ0         18
-    #define CIRCUITSETUP_IRQ1         21
+    #define CIRCUITSETUP_METER_CS_A   15  // CS1_BOARD1 — CT1–CT3 (was 39)
+    #define CIRCUITSETUP_METER_CS_B   16  // CS2_BOARD1 — CT4–CT6 (was 40)
+    // ATM90 IRQ lines (inputs, diagnostic read only). Not in public pin header — adjust to PCB.
+    #define CIRCUITSETUP_IRQ0         33
+    #define CIRCUITSETUP_IRQ1         34
 #endif
 
 // Fallback defaults for lint-only builds where BOARD_VER_* is undefined.
@@ -143,17 +144,17 @@
 #define CIRCUITSETUP_SPI_MISO 42
 #endif
 #ifndef CIRCUITSETUP_SPI_SCK
-#define CIRCUITSETUP_SPI_SCK 8
+#define CIRCUITSETUP_SPI_SCK 12
 #endif
 #ifndef CIRCUITSETUP_METER_CS_A
-#define CIRCUITSETUP_METER_CS_A 39
+#define CIRCUITSETUP_METER_CS_A 15
 #endif
 #ifndef CIRCUITSETUP_METER_CS_B
-#define CIRCUITSETUP_METER_CS_B 40
+#define CIRCUITSETUP_METER_CS_B 16
 #endif
 #ifndef CIRCUITSETUP_IRQ0
-#define CIRCUITSETUP_IRQ0 18
+#define CIRCUITSETUP_IRQ0 33
 #endif
 #ifndef CIRCUITSETUP_IRQ1
-#define CIRCUITSETUP_IRQ1 21
+#define CIRCUITSETUP_IRQ1 34
 #endif

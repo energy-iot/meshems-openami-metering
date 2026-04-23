@@ -1,6 +1,7 @@
 #include <modbus_chd130.h>
 #include <TimeLib.h>
 #include <data_model.h>
+#include <config.h>
 #include <DTMPowerCache.h>
 
 Modbus_CHD130::Modbus_CHD130() {}
@@ -25,7 +26,9 @@ void Modbus_CHD130::set_modbus_address(uint8_t addr) {
 float Modbus_CHD130::read_modbus_value(uint16_t registerAddress) {
     uint8_t result = readHoldingRegisters(registerAddress, 1);
     if (result != ku8MBSuccess) {
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS CHD130: Error reading register 0x%04X\n", registerAddress);
+#endif
         throw std::runtime_error("Modbus read error");
     }
     return getResponseBuffer(0);
@@ -34,7 +37,9 @@ float Modbus_CHD130::read_modbus_value(uint16_t registerAddress) {
 float Modbus_CHD130::read_modbus_extended_value(uint16_t registerAddress) {
     uint8_t result = readHoldingRegisters(registerAddress, 2);
     if (result != ku8MBSuccess) {
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS CHD130: Error reading register 0x%04X\n", registerAddress);
+#endif
         throw std::runtime_error("Modbus read error");
     }
     return (float)((getResponseBuffer(0) << 16) | getResponseBuffer(1));
@@ -55,20 +60,24 @@ void Modbus_CHD130::poll() {
         last_reading.timestamp_last_report = now();
         last_reading.metadata       = read_modbus_value(rMETADATA);
 
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS CHD130: Total Energy: %.2f\n", last_reading.total_energy);
         Serial.printf("MODBUS CHD130: Import Energy: %.2f\n", last_reading.import_energy);
         Serial.printf("MODBUS CHD130: Export Energy: %.2f\n", last_reading.export_energy);
         Serial.printf("MODBUS CHD130: Voltage: %.2f V\n", last_reading.voltage);
         Serial.printf("MODBUS CHD130: Current: %.2f A\n", last_reading.current);
         Serial.printf("MODBUS CHD130: Active Power: %.2f W\n", last_reading.active_power);
-        //Serial.printf("MODBUS CHD130: Apparent Power: %.2f VA\n", last_reading.apparent_power);
         Serial.printf("MODBUS CHD130: Reactive Power: %.2f VAr\n", last_reading.reactive_power);
         Serial.printf("MODBUS CHD130: Power Factor: %.3f\n", last_reading.power_factor);
         Serial.printf("MODBUS CHD130: Frequency: %.2f Hz\n", last_reading.frequency);
         Serial.printf("MODBUS CHD130: Metadata: %d\n", last_reading.metadata);
+#endif
 
     } catch (std::runtime_error& e) {
+#if MODBUS_SERIAL_LOG
         Serial.println("MODBUS CHD130: Error reading registers");
+#endif
+        (void)e;
     }
 }
 

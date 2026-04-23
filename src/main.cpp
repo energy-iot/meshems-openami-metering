@@ -418,10 +418,7 @@ static void setup_webserver() {
         relayShadow[1][channel] = false;
     }
 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/index.html", String(), false);
-    });
-
+    // API routes first — must match before the static file handler.
     server.on("/api/dashboard", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "application/json", build_dashboard_json());
     });
@@ -463,6 +460,14 @@ static void setup_webserver() {
 
     server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(204);
+    });
+
+    // All other GETs: serve from SPIFFS root (index.html, assets). Uses AsyncFileResponse
+    // internally — avoids ad-hoc send() paths that returned HTTP 500 on some ESP32 + AsyncWebServer builds.
+    server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+
+    server.onNotFound([](AsyncWebServerRequest *request) {
+        request->send(404, "text/plain", "Not found: " + request->url());
     });
 
     server.begin();
@@ -551,7 +556,7 @@ void loop() {
    
 #if !HACK_LAB_SKIP_MODBUS
    static unsigned long lastModbusMillis = 0;
-   if (millis() - lastModbusMillis > ModbusMaster_pollrate) {
+   if (millis() - lastModbusMillis >= (unsigned long)ModbusMaster_pollrate) {
         lastModbusMillis = millis();
         loop_modbus_master();
    }

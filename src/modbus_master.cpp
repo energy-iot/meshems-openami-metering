@@ -71,19 +71,23 @@ ModbusMaster* meters[MODBUS_NUM_METERS] = {&dds238_1, &dds238_2, &dds238_3}; // 
 //ModbusMaster* meters[MODBUS_NUM_METERS] = {&dds238_1, &dds238_2, &dds238_3, &dds238_4, &dds238_5, &dds238_6}; // add to the array for the 3 multi-meter boxes
 //ModbusMaster* meters[MODBUS_NUM_METERS] = {&dds238_1, &dds238_2, &dds238_3, &dds238_4, &dds238_5, &dds238_6, &dds238_7, &dds238_8, &dds238_9}; // add to the array for the 3 multi-meter boxes
 // Timing variables
-unsigned long lastPollMillis, lastEVSEMillis, lastEVSEChargingMillis = 0;
+unsigned long lastEVSEMillis, lastEVSEChargingMillis = 0;
 
 /**
  * Initialize SHT20 temperature/humidity sensor
  */
 void setup_sht20() {
+#if MODBUS_SERIAL_LOG
     Serial.printf("SETUP: MODBUS: SHT20 #1: address:%d\n", THERMOSTAT_1_ADDR);
+#endif
     sht20.set_modbus_address(THERMOSTAT_1_ADDR);
     sht20.begin(THERMOSTAT_1_ADDR, _modbus1);    // node number 99 so doesnt conflict with meters at 1-n
 }
 
 void setup_dds238() {
+#if MODBUS_SERIAL_LOG
    Serial.printf("SETUP: MODBUS: DDS238 #1: address:%d\n", DDS238_1_ADDR);
+#endif
    dds238_1.set_modbus_address(DDS238_1_ADDR);
    dds238_2.set_modbus_address(DDS238_2_ADDR);
    dds238_3.set_modbus_address(DDS238_3_ADDR);
@@ -131,8 +135,11 @@ void setup_modbus_master() {
     _modbus1.begin(9600, SERIAL_8N1, RS485_RX_1, RS485_TX_1);
 
     int rxLevel = digitalRead(RS485_RX_1);
+#if MODBUS_SERIAL_LOG
     Serial.printf("MODBUS SETUP: RS485_RX_1 (GPIO%d) idle level = %s (expect HIGH)\n",
                   RS485_RX_1, rxLevel ? "HIGH" : "LOW");
+#endif
+    (void)rxLevel;
 
     _modbus1.begin(9600, SERIAL_8N1, RS485_RX_1, RS485_TX_1);
 
@@ -204,11 +211,12 @@ void poll_thermostats() {
 #if MODBUS_ENABLE_SHT20
     uint8_t result = sht20.poll();
     if (result != 0x00) {
-        // Wait briefly for any late-arriving bytes, then print whatever the UART has
-        delay(200);
+        // Short pause then dump RX (ModbusMaster already waited ku16MBResponseTimeout)
+        delay(30);
         uint8_t n = 0;
         uint8_t buf[16];
         while (_modbus1.available() && n < sizeof(buf)) buf[n++] = _modbus1.read();
+#if MODBUS_SERIAL_LOG
         if (n > 0) {
             Serial.printf("MODBUS RAW rx (%d bytes):", n);
             for (uint8_t i = 0; i < n; i++) Serial.printf(" 0x%02X", buf[i]);
@@ -216,6 +224,8 @@ void poll_thermostats() {
         } else {
             Serial.println("MODBUS RAW rx: nothing — SHT20 sent no response");
         }
+#endif
+        (void)n;
     }
 #endif
     // TODO: extend to sht20_thermostats[] array for multiple sensors
@@ -226,11 +236,12 @@ void poll_thermostats() {
  * Main polling loop for Modbus communication
  */
 void loop_modbus_master() {
-    if (millis() - lastPollMillis > ModbusMaster_pollrate) {
-        Serial.println("Starting poll cycle...");
-        poll_thermostats(); // Poll thermostat/environmental  sensors such as cabinet temp/humid/pressure/ , wire mains and evse temps etc
-        // poll_energy_meters(); // Poll energy meters
-        // TODO poll other modbus device on same link
-        lastPollMillis = millis();
-    }
+    // Rate limit only in main.cpp (lastModbusMillis); a second timer here used the same
+    // ModbusMaster_pollrate with strict millis() > checks and skipped every other tick (~2× interval).
+#if MODBUS_SERIAL_LOG
+    Serial.println("Starting poll cycle...");
+#endif
+    poll_thermostats(); // SHT20 / thermostats on RS485
+    // poll_energy_meters();
+    // TODO poll other modbus device on same link
 }

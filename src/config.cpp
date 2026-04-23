@@ -4,7 +4,7 @@
 char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
 // this data can be downloaded from a linux java policy server aggregation node for every m streetpoleEMS nodes
-int ModbusMaster_pollrate = 10000;  // Used only when HACK_LAB_SKIP_MODBUS is 0 (ms between poll cycles)
+int ModbusMaster_pollrate = 3000;  // ms between Modbus master cycles (main.cpp); SHT20 timeout is separate (~500 ms)
 int MQTTPublish_rootrate = 15000;   // hack: publish telemetry every 15s
 int MQTTPoll_rate = 2000;           // hack: MQTT client loop / keepalive every 2s
 // TODO add different appropriate mqtt publish rates for environmental vs stats vs RCMleaks and harmonics vs real time billing energy usage 
