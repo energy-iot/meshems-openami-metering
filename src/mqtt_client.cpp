@@ -458,19 +458,19 @@ void subscriber_callback(char* topic, uint8_t* payload, unsigned int length) {
     strncpy(payload_buf, (char*)payload, length);
     payload_buf[length] = '\0';         //ensure null-termination
     Serial.printf("\n***MQTT CALLBACK: topic '%s', payload '%s'\n", topic, payload_buf);
-    if (strstr(payload_buf, "report") == 0) {
+    if (strcmp(payload_buf, "report") == 0) {
       //trigger a data-model dump
       return;
     }
-    if (strstr((char*)payload_buf, "meter") == 0) {
+    if (strcmp((char*)payload_buf, "meter") == 0) {
       //control the meter
       return;
     }
-    if (strstr((char*)payload_buf, "bms") == 0) {
+    if (strcmp((char*)payload_buf, "bms") == 0) {
       //BMS command
       return;
     }
-    if (strstr((char*)payload_buf, "inverter") == 0) {
+    if (strcmp((char*)payload_buf, "inverter") == 0) {
       //inverter command
       return;
     }
