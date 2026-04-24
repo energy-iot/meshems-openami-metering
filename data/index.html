@@ -106,7 +106,13 @@
       line-height: 1.2;
       word-break: break-word;
     }
-    #historyChart { width: 100%; max-height: 220px; }
+    .history-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+    .history-toolbar label { font-size: 12px; color: #e2e8f0; cursor: pointer; user-select: none; }
+    .history-toolbar input { accent-color: #38bdf8; margin-right: 6px; }
+    .history-plot-area { position: relative; min-height: 240px; }
+    .history-ridge-mount { width: 100%; min-height: 280px; }
+    .history-ridge-mount svg { display: block; max-width: 100%; }
+    #historyChart { width: 100%; max-height: 280px; display: none; }
     .legend { display: flex; gap: 8px; font-size: 12px; margin-top: 8px; color: #cbd5e1; }
     .cs-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
     .cs-charts h3 { margin: 0 0 6px 0; font-size: 13px; color: #94a3b8; font-weight: 600; }
@@ -233,12 +239,22 @@
 
       <div class="card">
         <h2>Daily House Timeline</h2>
-        <div class="muted" style="font-size:12px;margin-bottom:6px">
-          Full <strong>24h</strong> clock (0–23). <strong>“Now”</strong> is at mid‑afternoon (~14:00), between the usual morning and evening demand peaks — left is earlier today (all circuits stacked as if ON), right is the rest of the day.
-          <strong>Right</strong>: stacked <em>fills</em> only when that SSR is ON; each circuit still draws its projected <em>line</em> when OFF.
-          <strong>Stack</strong>: Primary / Priority (warm) at the bottom, Secondary (cool) above.
+        <div class="history-toolbar" role="radiogroup" aria-label="Timeline chart style">
+          <span style="font-size:12px;color:#94a3b8">View</span>
+          <label><input type="radio" name="historyViewMode" value="ridge" checked> Ridgeline (D3)</label>
+          <label><input type="radio" name="historyViewMode" value="stacked"> Stacked chart (Chart.js)</label>
         </div>
-        <canvas id="historyChart"></canvas>
+        <div id="historyBlurbRidge" class="muted" style="font-size:12px;margin-bottom:6px">
+          <strong>Ridgeline</strong> (<a href="https://observablehq.com/@d3/ridgeline-plot" target="_blank" rel="noopener">D3 example</a>): one band per circuit so fills never cross another layer. Full <strong>24h</strong> (0–23h); dashed <strong>now</strong> at ~14h. Secondary (cool) higher, Primary (warm) lower; each row scales to its own max kWh/h.
+          <strong>Earlier today</strong>: area under the curve. <strong>Rest of day</strong>: area only if SSR is ON; line still shows projection when OFF.
+        </div>
+        <div id="historyBlurbStacked" class="muted" style="font-size:12px;margin-bottom:6px;display:none">
+          <strong>Stacked chart</strong> (Chart.js): one shared y-axis for total kWh/h. Hours before <strong>now</strong> (~14h) filled as if every circuit were on. After now: stacked fills only for SSRs that are ON; each circuit still draws its projected line when OFF. Primary (warm) at the bottom of the stack, Secondary (cool) above.
+        </div>
+        <div class="history-plot-area">
+          <div id="historyRidgeMount" class="history-ridge-mount" aria-label="Daily house timeline ridgeline"></div>
+          <canvas id="historyChart" aria-label="Daily house timeline stacked chart"></canvas>
+        </div>
       </div>
 
       <div class="card">
@@ -286,6 +302,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
   <script>
@@ -308,9 +325,64 @@
     let mapInitialFitDone = false;
     let map;
     let mapInitialized = false;
-    let chart;
     let chartCs10m;
     let chartCs30s;
+    let historyStackedChart;
+
+    const HISTORY_VIEW_LS_KEY = "meshemsOpenamiHistoryView";
+
+    function getHistoryViewMode() {
+      try {
+        const v = localStorage.getItem(HISTORY_VIEW_LS_KEY);
+        return v === "stacked" ? "stacked" : "ridge";
+      } catch (e) {
+        return "ridge";
+      }
+    }
+
+    function setHistoryViewMode(mode) {
+      try {
+        localStorage.setItem(HISTORY_VIEW_LS_KEY, mode === "stacked" ? "stacked" : "ridge");
+      } catch (e) {
+        /* ignore quota / private mode */
+      }
+    }
+
+    function applyHistoryViewModeUi() {
+      const mode = getHistoryViewMode();
+      const ridgeEl = document.getElementById("historyRidgeMount");
+      const canvasEl = document.getElementById("historyChart");
+      const bR = document.getElementById("historyBlurbRidge");
+      const bS = document.getElementById("historyBlurbStacked");
+      document.querySelectorAll('input[name="historyViewMode"]').forEach((r) => {
+        r.checked = r.value === mode;
+      });
+      if (ridgeEl) {
+        ridgeEl.style.display = mode === "ridge" ? "" : "none";
+      }
+      if (canvasEl) {
+        canvasEl.style.display = mode === "stacked" ? "block" : "none";
+      }
+      if (bR) {
+        bR.style.display = mode === "ridge" ? "" : "none";
+      }
+      if (bS) {
+        bS.style.display = mode === "stacked" ? "" : "none";
+      }
+    }
+
+    function wireHistoryViewModeRadios() {
+      document.querySelectorAll('input[name="historyViewMode"]').forEach((radio) => {
+        radio.addEventListener("change", () => {
+          if (!radio.checked) {
+            return;
+          }
+          setHistoryViewMode(radio.value);
+          applyHistoryViewModeUi();
+          updateHistoryChart();
+        });
+      });
+    }
     let lastBounds;
     let layerStackUiDone = false;
     let relayMqttClient = null;
@@ -535,10 +607,6 @@
     const HISTORY_DAY_HOURS = 24;
     const HISTORY_NOW_SPLIT = 14;
 
-    function historyTimelineLabels() {
-      return Array.from({ length: HISTORY_DAY_HOURS }, (_, h) => h + "h");
-    }
-
     function relayChannelOn(board, ssrCh) {
       const ch = Number(ssrCh);
       const raw = board.tenantHouseholds;
@@ -573,11 +641,15 @@
       return m ? !!m.relayState : true;
     }
 
+    function historyTimelineLabels() {
+      return Array.from({ length: HISTORY_DAY_HOURS }, (_, h) => h + "h");
+    }
+
     const historyNowGuide = {
       id: "historyNowGuide",
       afterDatasetsDraw(chart) {
         const xScale = chart.scales.x;
-        if (!xScale || chart.data.labels.length < HISTORY_NOW_SPLIT + 1) {
+        if (!xScale || !chart.data.labels || chart.data.labels.length < HISTORY_NOW_SPLIT + 1) {
           return;
         }
         const i0 = HISTORY_NOW_SPLIT - 1;
@@ -611,9 +683,19 @@
       },
     };
 
-    function buildChart() {
-      const ctx = document.getElementById("historyChart").getContext("2d");
-      chart = new Chart(ctx, {
+    /** Chart.js stack order: Primary channels bottom (0–2), Secondary top (3–5). */
+    const HISTORY_STACK_ORDER_BY_CHANNEL = { 0: 0, 2: 1, 4: 2, 1: 3, 3: 4, 5: 5 };
+
+    function buildHistoryStackedChart() {
+      if (historyStackedChart) {
+        return;
+      }
+      const canvas = document.getElementById("historyChart");
+      if (!canvas || typeof Chart === "undefined") {
+        return;
+      }
+      const ctx = canvas.getContext("2d");
+      historyStackedChart = new Chart(ctx, {
         type: "line",
         data: {
           labels: historyTimelineLabels(),
@@ -621,6 +703,7 @@
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           plugins: {
             legend: {
@@ -663,7 +746,7 @@
               ticks: { color: "#cbd5e1" },
               title: {
                 display: true,
-                text: "kWh / hour (sim) — 24h clock, now ~14h | Pri bottom, Sec top",
+                text: "kWh / hour (sim) — 24h, now ~14h | stacked view",
                 color: "#94a3b8"
               },
               stacked: true,
@@ -675,15 +758,9 @@
       });
     }
 
-    /** Chart.js stack `order`: lower = nearer baseline. Priority SSRs (0,2,4) bottom; Secondary (1,3,5) on top. */
-    const HISTORY_STACK_ORDER_BY_CHANNEL = { 0: 0, 2: 1, 4: 2, 1: 3, 3: 4, 5: 5 };
-
-    function updateHistoryChart() {
-      if (!chart || !state.payload) {
-        return;
-      }
-      const board = getBoard(state.selectedBoard);
-      if (!board || !board.meters.length) {
+    function updateHistoryStackedChart(board) {
+      buildHistoryStackedChart();
+      if (!historyStackedChart) {
         return;
       }
       const selHh = householdIndexForMeterId(state.selectedMeter);
@@ -755,9 +832,192 @@
         const ch = [1, 3, 5][i];
         pushPastFuture(full, cfg.label + " Sec", CHART_SEC_COLD[i], ch, selHh === i, HISTORY_STACK_ORDER_BY_CHANNEL[ch]);
       }
-      chart.data.labels = historyTimelineLabels();
-      chart.data.datasets = datasets;
-      chart.update("none");
+      historyStackedChart.data.labels = historyTimelineLabels();
+      historyStackedChart.data.datasets = datasets;
+      historyStackedChart.resize();
+      historyStackedChart.update("none");
+    }
+
+    /**
+     * D3 ridgeline (see https://observablehq.com/@d3/ridgeline-plot): one horizontal band per circuit
+     * so area fills never intrude on another series. Each row auto-scales kWh/h to its own band.
+     */
+    function renderHistoryRidgeline(mount, board) {
+      if (typeof d3 === "undefined") {
+        mount.textContent = "D3 failed to load.";
+        return;
+      }
+      const recN = HISTORY_NOW_SPLIT;
+      const selHh = householdIndexForMeterId(state.selectedMeter);
+      const rows = [];
+      for (let i = 0; i < 3; i++) {
+        const cfg = HOUSEHOLD_CIRCUIT_METERS[i];
+        rows.push({
+          label: cfg.label + " Sec",
+          col: CHART_SEC_COLD[i],
+          full: sumHistoryKwhByHour(board.meters, cfg.sec),
+          ch: [1, 3, 5][i],
+          emphasis: selHh === i
+        });
+      }
+      for (let i = 0; i < 3; i++) {
+        const cfg = HOUSEHOLD_CIRCUIT_METERS[i];
+        rows.push({
+          label: cfg.label + " Pri",
+          col: CHART_PRI_WARM[i],
+          full: sumHistoryKwhByHour(board.meters, cfg.pri),
+          ch: [0, 2, 4][i],
+          emphasis: selHh === i
+        });
+      }
+
+      const width = Math.max(300, mount.getBoundingClientRect().width || 360);
+      const rowH = 38;
+      const margin = { top: 20, right: 10, bottom: 30, left: 68 };
+      const innerW = width - margin.left - margin.right;
+      const chartBottom = margin.top + rows.length * rowH;
+      const height = chartBottom + margin.bottom;
+
+      const x = d3.scaleLinear().domain([0, HISTORY_DAY_HOURS - 1]).range([margin.left, margin.left + innerW]);
+      const xNow = (x(recN - 1) + x(recN)) / 2;
+
+      const areaCurve = d3.curveMonotoneX;
+      const lineCurve = d3.curveMonotoneX;
+
+      mount.innerHTML = "";
+      const svg = d3.select(mount).append("svg")
+        .attr("viewBox", `0 0 ${width} ${height}`)
+        .attr("width", "100%")
+        .attr("height", height)
+        .attr("role", "img");
+
+      const axisG = svg.append("g").attr("transform", `translate(0,${chartBottom})`);
+      axisG.call(
+        d3.axisBottom(x)
+          .ticks(8)
+          .tickSizeOuter(0)
+          .tickFormat((d) => d + "h")
+      );
+      axisG.selectAll("text").attr("fill", "#94a3b8").attr("font-size", "9px");
+      axisG.selectAll("path,line").attr("stroke", "#475569");
+
+      svg.append("line")
+        .attr("x1", xNow)
+        .attr("x2", xNow)
+        .attr("y1", margin.top - 2)
+        .attr("y2", chartBottom)
+        .attr("stroke", "rgba(148, 163, 184, 0.55)")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "5,4");
+
+      svg.append("text")
+        .attr("x", xNow)
+        .attr("y", margin.top - 6)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#cbd5e1")
+        .attr("font-size", "11px")
+        .attr("font-weight", "700")
+        .text("now");
+
+      svg.append("text")
+        .attr("x", margin.left)
+        .attr("y", height - 6)
+        .attr("fill", "#64748b")
+        .attr("font-size", "9px")
+        .text("kWh/h per row (scaled to that circuit’s max for the day)");
+
+      rows.forEach((row, r) => {
+        const bandTop = margin.top + r * rowH;
+        const bandBottom = bandTop + rowH - 6;
+        const curveSpan = rowH - 10;
+        const vmax = Math.max(1e-6, d3.max(row.full, (v) => Number(v) || 0)) * 1.1;
+        const yAt = (v) => bandBottom - (Math.max(0, Number(v) || 0) / vmax) * curveSpan;
+
+        const pastData = d3.range(0, recN).map((h) => ({ px: x(h), py: yAt(row.full[h]) }));
+        const areaPast = d3.area()
+          .x((d) => d.px)
+          .y0(bandBottom)
+          .y1((d) => d.py)
+          .curve(areaCurve);
+
+        const on = relayChannelOn(board, row.ch);
+        if (pastData.length > 0) {
+          svg.append("path")
+            .datum(pastData)
+            .attr("fill", hexToRgba(row.col, row.emphasis ? 0.42 : 0.28))
+            .attr("d", areaPast);
+        }
+
+        if (on && recN < HISTORY_DAY_HOURS) {
+          const futData = d3.range(recN, HISTORY_DAY_HOURS).map((h) => ({ px: x(h), py: yAt(row.full[h]) }));
+          if (futData.length > 0) {
+            const areaFut = d3.area()
+              .x((d) => d.px)
+              .y0(bandBottom)
+              .y1((d) => d.py)
+              .curve(areaCurve);
+            svg.append("path")
+              .datum(futData)
+              .attr("fill", hexToRgba(row.col, row.emphasis ? 0.34 : 0.2))
+              .attr("d", areaFut);
+          }
+        }
+
+        const linePts = d3.range(HISTORY_DAY_HOURS).map((h) => [x(h), yAt(row.full[h])]);
+        const lineGen = d3.line()
+          .x((d) => d[0])
+          .y((d) => d[1])
+          .curve(lineCurve);
+
+        svg.append("path")
+          .datum(linePts)
+          .attr("fill", "none")
+          .attr("stroke", row.col)
+          .attr("stroke-width", row.emphasis ? 2.1 : 1.15)
+          .attr("stroke-linejoin", "round")
+          .attr("d", lineGen);
+
+        svg.append("line")
+          .attr("x1", margin.left - 2)
+          .attr("x2", margin.left + innerW + 2)
+          .attr("y1", bandBottom + 1)
+          .attr("y2", bandBottom + 1)
+          .attr("stroke", "rgba(51, 65, 85, 0.65)")
+          .attr("stroke-width", 1);
+
+        svg.append("text")
+          .attr("x", 6)
+          .attr("y", bandTop + rowH / 2 + 2)
+          .attr("fill", row.emphasis ? "#f1f5f9" : "#94a3b8")
+          .attr("font-size", "9px")
+          .attr("font-weight", row.emphasis ? "700" : "500")
+          .text(row.label);
+      });
+    }
+
+    function updateHistoryChart() {
+      if (!state.payload) {
+        return;
+      }
+      const board = getBoard(state.selectedBoard);
+      if (!board || !board.meters.length) {
+        return;
+      }
+      const mode = getHistoryViewMode();
+      applyHistoryViewModeUi();
+      if (mode === "ridge") {
+        const mount = document.getElementById("historyRidgeMount");
+        if (!mount) {
+          return;
+        }
+        if (typeof d3 === "undefined") {
+          mount.textContent = "D3 failed to load; switch to Stacked chart or check the network.";
+          return;
+        }
+        renderHistoryRidgeline(mount, board);
+      } else {
+        updateHistoryStackedChart(board);
+      }
     }
 
     const csChartCommonOptions = {
@@ -1561,7 +1821,8 @@
 
     async function bootstrap() {
       wireCircuitSetupModal();
-      buildChart();
+      applyHistoryViewModeUi();
+      wireHistoryViewModeRadios();
       buildCsCharts();
       await refreshData();
       setInterval(refreshData, 2000);
