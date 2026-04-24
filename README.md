@@ -218,6 +218,26 @@ pio run -t uploadfs --upload-port /dev/cu.usbmodemXXXXX
 pio run -t upload   --upload-port /dev/cu.usbmodemXXXXX
 ```
 
+### Connect and open the dashboard HTML in your browser
+
+After firmware + filesystem are flashed, use this quick sequence to reach `data/index.html` from a browser:
+
+1. Connect your laptop/phone to the same Wi-Fi network as the ESP32.
+2. Open serial monitor and reset the board:
+   ```bash
+   pio device monitor -b 115200 --port /dev/cu.usbmodemXXXXX
+   ```
+3. Watch boot logs for the assigned IP address (for example `192.168.95.54`).
+4. In a browser, open:
+   - `http://<device-ip>/` (serves `data/index.html`)
+   - `http://<device-ip>/api/dashboard` (raw JSON check)
+5. If the API works but UI does not, run `uploadfs` again, then hard-refresh the browser.
+
+Quick checks:
+- Use plain `http://` (not `https://`).
+- Make sure VPN/client isolation is off; your browser device must be on the same subnet.
+- If the IP changes after reboot, reconnect with the new IP from serial logs.
+
 ---
 
 ## Nearly Free Energy (Uganda) site-layout reference
