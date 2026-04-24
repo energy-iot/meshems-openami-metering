@@ -30,6 +30,60 @@ A development kit based on the ESP32S3 N16R8 DEV KIT C1 for energy management sy
 | MCP2515 CAN | ❌ Init failure | `Entering Configuration Mode Failure` — SPI wiring or crystal freq mismatch |
 | Onboard SSR (GPIO38) | ✅ Working | Toggles on relay loop |
 
+---
+
+### MQTT Relay Command Interface
+
+All commands publish JSON to `openami/<device_id>/cmd`. The subscriber parses the `cmd` field and dispatches to the appropriate handler.
+
+#### Relay actuation (`cmd: "relay"`)
+
+| Field | Type | Description |
+|---|---|---|
+| `address` | int 0–7 | SSR channel (maps to `relay_rules[]` and `readings[]` index) |
+| `state` | `"open"` \| `"close"` | Immediate actuation — mutually exclusive with limit fields |
+| `kw_limit` | float | Trip relay when `active_power > kw_limit` (kW) |
+| `kwh_limit` | float | Trip relay when `total_energy > kwh_limit` (kWh) |
+
+Both `kw_limit` and `kwh_limit` can be set in one command. Omitting a limit field clears it to `-1` (disabled). A stored limit of `-1` is never evaluated.
+
+```jsonc
+{"cmd":"relay","address":2,"state":"close"}
+{"cmd":"relay","address":2,"kw_limit":3.0}
+{"cmd":"relay","address":2,"kwh_limit":150.0}
+{"cmd":"relay","address":2,"kw_limit":3.0,"kwh_limit":150.0}
+```
+
+#### Other registered commands
+
+| `cmd` | Description |
+|---|---|
+| `"report"` | Stub — triggers a data-model dump (not yet implemented) |
+| `"meter"` | Stub — meter control (not yet implemented) |
+| `"bms"` | Stub — BMS command (not yet implemented) |
+| `"inverter"` | Stub — inverter command (not yet implemented) |
+
+---
+
+### Relay Rule Enforcement — Implementation Status
+
+**What is implemented:**
+
+- **`RelayRule` storage** (`include/i2c_ssr_bank.h`, `src/i2c_ssr_bank.cpp`) — per-channel struct with `kw_limit` and `kwh_limit` floats. `set_relay_rule()` / `get_relay_rule()` accessors. Persists in RAM until reset.
+- **`set_i2c_ssr_channel(channel, on)`** (`src/i2c_ssr_bank.cpp`) — programmatic relay actuation via PCF8574 I2C, including active-low inversion and logical-to-bit mapping.
+- **`enforce_relay_rules()`** (`src/main.cpp`) — runs every main loop iteration after readings are updated. For each channel 0–(`MODBUS_NUM_METERS`−1), compares `readings[ch].active_power` against `kw_limit` and `readings[ch].total_energy` against `kwh_limit`. On breach, calls `apply_dashboard_relay(0, ch, false)` and publishes to `openami/<device_id>/relay/trip_<ch>`.
+- **MQTT poll/publish/reconnect decoupling** — `poll_mqtt()` every 10 s (`MQTTPoll_rate`), `loop_mqtt()` every 5 min (`MQTTPublish_rootrate`), `maintain_mqtt_connection()` gates a reconnect attempt before either fires.
+
+**What is not yet implemented:**
+
+- **Rule enforcement** — stored rules are not yet evaluated against live meter readings. A polling loop must be added to check each channel's `kw_limit` / `kwh_limit` against current readings on some cadence and open the relay when a tenant exceeds their threshold.
+- **State command actuation** — the `state: open/close` relay command is parsed and stored but not yet connected to the I2C SSR control functions. Wiring to `set_i2c_ssr_channel()` is required.
+- **Rule persistence** — rules are stored in RAM and lost on power cycle. For production deployments where limits must survive a reboot, rules need to be written to external storage (e.g. SPIFFS or EEPROM) and reloaded on boot.
+- **No hysteresis or re-arm logic** — once a relay trips, it should stay open until manually re-closed via `{"cmd":"relay","address":N,"state":"close"}`. The enforcement implementation will need to avoid re-evaluating an already-tripped channel, and there is no automatic re-arm or dead-band around the threshold.
+- **kWh enforcement uses cumulative `total_energy`** — this is a one-way ratchet. The limit fires when the meter's lifetime total crosses the threshold, not a per-session or per-billing-period accumulation. A reset mechanism (write a new threshold or clear the rule) is needed for production use.
+
+---
+
 ### Known Issues
 
 #### SHT20 Modbus Timeout — SoftwareSerial / WiFi Interrupt Contention
