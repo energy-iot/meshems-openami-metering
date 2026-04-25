@@ -44,16 +44,18 @@
 #include <mqtt_client.h>
 #include <config.h>
 #include <data_model.h>
+#include <pins.h>
 
 void setup() {
     Serial.begin(115200);   // Initialize serial communication for debugging
     Serial.println("INFO - Booting...Setup in 3s");
     delay(3000);
     
-    SPI.begin();
-
     generateDeviceID();
+
+    SPI.begin(DISPLAY_CLK_PIN, -1, DISPLAY_MOSI_PIN, DISPLAY_CS_PIN);
     setup_display();
+
     _console.addLine(" Display up! next is WiFi/Eth, ");
     _console.addLine(" NTP, MQTT, Modbus, Buttons... ");
     // Display startup splash screen (Rick image)
@@ -69,13 +71,15 @@ void setup() {
     //      for optional use each the time its polled or before each time it gets published  - iterate also for  rules and automation
     
     // Initialize Modbus RTU master/client communication
-    setup_modbus_master(); // This sets up communication with sensors like the SHT20 temp/humidity sensor or other devices
-    setup_modbus_client();
+    setup_modbus_master(); // This sets up modbus master or "server" on RS485_1 with sensors like the SHT20 temp/humidity sensor or other devices
+    setup_modbus_client(); // This sets up a modbus slave or "client" interface on RS485_2
     //setup_gpio  // ssr, temp_humid, door contact/tamper. shock, imaging)
-    setup_can(); // Initialize CAN bus communication
+    
+    //setup_can(); // Initialize CAN bus communication
 
     setup_buttons();
     setup_i2c_ssr_bank();
+    
     _console.addLine(" EMS In-service Ready!");
     _console.addLine("  CHECK MQTT @");
     _console.addLine("  public.cloud.shiftr.io"); //TODO grab the setup strings from the config file
@@ -107,11 +111,16 @@ unsigned long lastMQTTPollMillis = 0;
 void loop() {
    loop_buttons();
    
+   // ==================== Modbus Master polling loop ====================
    if (millis() - lastModbusMillis > ModbusMaster_pollrate) {
         lastModbusMillis = millis();
         loop_modbus_master();
    }
 
+   // ==================== Modbus Client polling loop ====================
+   //loop_modbus_client(); // Modbus RS485_2 client
+
+   // ==================== MQTT polling loop ====================
    bool poll_due    = (millis() - lastMQTTPollMillis) > (unsigned long)MQTTPoll_rate;
    bool publish_due = (millis() - lastMQTTMillis)     > (unsigned long)MQTTPublish_rootrate;
 
@@ -137,14 +146,14 @@ void loop() {
             loop_mqtt();
         }
    }
-  
-    loop_modbus_client();
-    loop_buttons(); 
-    //loop_display();
-    //loop_can();
+   
+   // ==================== Kick off the subloops ======================
+    
+    loop_buttons(); // Button inputs
+    loop_display(); // Display updates
+    //loop_can(); //  CAN bus messages
+
     //loop_i2c_ssr_bank_serial();
     //loop_i2c_ssr_bank_blink_test();
-    // TODO loop_IFTTT();
-    // TODO loop_alerts();
     
 }

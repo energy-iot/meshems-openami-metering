@@ -14,8 +14,8 @@ class Modbus_SHT20 : public ModbusMaster {
         uint8_t query_register(uint16_t reg);
 
         enum MB_Reg {
-          rTEMPERATURE = 1,
-          rHUMIDITY
+          rTEMPERATURE = 1,  // PDU address 1 (0x0001) — confirmed by old working firmware
+          rHUMIDITY    = 2   // PDU address 2 (0x0002)
         };
 
         float getTemperature();

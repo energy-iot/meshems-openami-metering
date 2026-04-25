@@ -16,7 +16,7 @@
 #pragma once
 
 // Board Version 1 - 2025 
-#ifdef defined(BOARD_VER_V1)
+#if defined(BOARD_VER_V1)
     // analog button array (voltage divider)
     #ifdef CONFIG_IDF_TARGET_ESP32S3
         #define ANALOG_BTN_PIN  A0 //GPIO1
@@ -45,7 +45,7 @@
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR
 
 // Board Version 2 - 2025 
-elif defined(BOARD_VER_V2)
+#elif defined(BOARD_VER_V2)
     // analog button array (voltage divider)
     #ifdef CONFIG_IDF_TARGET_ESP32S3
         #define ANALOG_BTN_PIN  A0 //GPIO1
@@ -86,21 +86,36 @@ elif defined(BOARD_VER_V2)
     #define ANALOG_BTN_PIN  A7
     #endif
 
-    //SPI OLED display
-    //#define DISPLAY_RST_PIN 2
-    //#define DISPLAY_DC_PIN 42
-    //#define DISPLAY_CS_PIN 41
+    // ==================== SD CARD ====================
+    // Verified by Liam April 23 2026 
+    #define SD_MOSI 11
+    #define SD_CLK 12    
+    #define SD_MISO 13
 
-    // ==================== SPI DISPLAY ====================
-    #define DISPLAY_RST_PIN 46  //Reset
-    #define DISPLAY_DC_PIN 3    //Data clock
-    #define DISPLAY_CS_PIN 9    //Chip select
+    // ==================== SPI OLED DISPLAY ====================
+    // Verified by Liam April 23 2026
+    #define DISPLAY_RST_PIN  GPIO_NUM_8     // RST
+    #define DISPLAY_CLK_PIN GPIO_NUM_12     // CLK
+    #define DISPLAY_MOSI_PIN GPIO_NUM_11    // MOSI
+    #define DISPLAY_DC_PIN GPIO_NUM_18      // DC
+    #define DISPLAY_CS_PIN GPIO_NUM_17      // CS
 
     // ==================== RS485 INTERFACE ================
-    #define RS485_RX_1             GPIO_NUM_6   // ESP32 RX <- HW-519 TXD
-    #define RS485_TX_1             GPIO_NUM_7   // ESP32 TX -> HW-519 RXD
-    #define RS485_RX_2             GPIO_NUM_15
-    #define RS485_TX_2             GPIO_NUM_16
+
+    // ==================== NESL EMS Controller PCB 865B Pinout ==========================
+    // Pin 42 = HW-RXD "Modbus 1 - Master" (connects to "Temp Senser" modbus)
+    // Pin 7 = HW-TXD "Modbus 1 - Master" (connects to "Temp Senser" modbus)
+
+    // Pin 6 = HW-RXD "Modbus 2 - Client" (second modbus SD - card side)
+    // Pin 4 = HW-TXD "Modbus 2 - Client" (second modbus SD - card side)
+
+    // -----------------    RS485_1 INTERFACE   -----------------------
+    #define RS485_1_RX  GPIO_NUM_42  // Connects to HW-519 RXD
+    #define RS485_1_TX  GPIO_NUM_7   // Connects to HW-519 TXD
+    
+    // -----------------    RS485_2 INTERFACE   -----------------------
+    #define RS485_2_RX  GPIO_NUM_6 // Connects to HW-519 RXD
+    #define RS485_2_TX  GPIO_NUM_4 // Connects to HW-519 RXD
 
     // ==================== RELAY ==========================
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR, solid state relay - 5 vdc TTL TBD for larger ssr
@@ -116,10 +131,15 @@ elif defined(BOARD_VER_V2)
     // PCF8574: 0x20-0x27 from DIP A2/A1/A0. PCF8574A often uses 0x38-0x3F.
     #define PCF8574_I2C_ADDR   0x27
 
-    // ==================== CAN INTERFACE ==================
-    #define CAN0_CS     2   //SPI chip select
-    #define CAN0_SO     42  //SPI MISO
-    #define CAN0_SI     41  //SPI MOSI
-    #define CAN0_SCK    8   //SPI clock
-    #define CAN0_INT    17  //Message interrupt output
+    // ==================== CAN INTERFACE (MCP2515) ==================
+    // ==== NOTE: There is no MCP 2515 on the 865B PCB pins are defined to prevent compilation error ===
+
+    // Uses a separate SPIClass (canSPI) — does NOT share pins with the OLED SPI bus
+    // (OLED occupies GPIO 11/12/13 via the default SPI instance).
+    #define CAN0_CS     10  // SPI chip select
+    #define CAN0_SO     15  // SPI MISO
+    #define CAN0_SI     16  // SPI MOSI
+    #define CAN0_SCK    17  // SPI clock
+    #define CAN0_INT    18  // MCP2515 interrupt output (active-low)
 #endif
+
