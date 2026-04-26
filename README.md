@@ -232,7 +232,6 @@ This development kit includes a connection for AC power input. When working with
   - Your board is in bootloader mode (if required)
 - Check the PlatformIO documentation for additional help: https://docs.platformio.org/
 
-
 ### Front-of-Meter IEEE ISV StreetPoleEMS Integrations
 
 #### Framework & Networking
