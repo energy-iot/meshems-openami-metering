@@ -15,9 +15,10 @@
  * If no METER_TYPE_* flag is defined, METER_TYPE_DDS238 is used as the
  * default to preserve backward compatibility.
  *
- * For Modbus meters (DDS238 / CHD130 / DDSU666), communication uses the
- * RS485_1 SoftwareSerial bus at 9600 8N1.  For the ATM90E32, SPI is used
- * instead; the RS-485 bus is not initialised in that mode.
+ * RS-485 bus and SHT20 thermostat are always initialised regardless of
+ * meter type.  When METER_TYPE_ATM90E32 is active, energy metering uses SPI
+ * while the SHT20 temperature/humidity sensor continues to use RS-485 — the
+ * two buses are fully independent.
  *
  * Hardware: HW519 RS-485 transceiver on RS485_1_RX / RS485_1_TX (pins.h).
  */
@@ -41,19 +42,20 @@
 // --------------------------------------------------------------------------
 // Meter-type-specific includes
 // --------------------------------------------------------------------------
+
+// SoftwareSerial and SHT20 are always needed: the RS-485 bus hosts the SHT20
+// temperature/humidity sensor regardless of the energy meter type.
+#include <SoftwareSerial.h>
+#include <modbus_sht20.h>
+
 #if defined(METER_TYPE_ATM90E32)
     #include <meter_atm90e32.h>
-#else
-    // All Modbus meters share the SoftwareSerial RS-485 bus.
-    #include <SoftwareSerial.h>
-    #include <modbus_sht20.h>
-    #if defined(METER_TYPE_DDS238)
-        #include <modbus_dds238.h>
-    #elif defined(METER_TYPE_CHD130)
-        #include <modbus_chd130.h>
-    #elif defined(METER_TYPE_DDSU666)
-        #include <modbus_ddsu666.h>
-    #endif
+#elif defined(METER_TYPE_DDS238)
+    #include <modbus_dds238.h>
+#elif defined(METER_TYPE_CHD130)
+    #include <modbus_chd130.h>
+#elif defined(METER_TYPE_DDSU666)
+    #include <modbus_ddsu666.h>
 #endif
 
 // --------------------------------------------------------------------------
@@ -66,19 +68,21 @@
 
 #define THERMOSTAT_1_ADDR 0x01
 
-// Modbus node addresses.  Assign sequentially in groups of three per
-// subpanel tier and programme each meter before installation.
-#define METER_1_ADDR 0x50
-#define METER_2_ADDR 0x51
-#define METER_3_ADDR 0x52
+// Modbus node addresses.  Standard factory default for DDS238, CHD130, and
+// DDSU666 meters is 0x01/0x02/0x03.  Reprogramme each meter via its front
+// panel or configuration tool before installation if a different address is
+// required.
+#define METER_1_ADDR 0x01
+#define METER_2_ADDR 0x02
+#define METER_3_ADDR 0x03
 
 // --------------------------------------------------------------------------
-// Shared objects (Modbus meters only)
+// RS-485 bus objects — always present; shared by SHT20 and Modbus meters.
 // --------------------------------------------------------------------------
-#if !defined(METER_TYPE_ATM90E32)
-SoftwareSerial _modbus1(RS485_1_RX, RS485_1_TX); // HW519 module
-Modbus_SHT20   sht20;
+SoftwareSerial _modbus1(RS485_1_RX, RS485_1_TX); // HW519 RS-485 transceiver
+Modbus_SHT20   sht20;                             // temperature/humidity sensor
 
+// Modbus energy meter objects — only for RTU meter types.
 #if defined(METER_TYPE_DDS238)
 Modbus_DDS238  dds238_1;
 Modbus_DDS238  dds238_2;
@@ -95,8 +99,6 @@ Modbus_DDSU666 ddsu666_2;
 Modbus_DDSU666 ddsu666_3;
 #endif
 
-#endif // !METER_TYPE_ATM90E32
-
 // Poll timestamp for loop_modbus_master() rate limiting.
 static unsigned long lastPollMillis = 0;
 
@@ -105,16 +107,15 @@ static unsigned long lastEVSEMillis         = 0;
 static unsigned long lastEVSEChargingMillis = 0;
 
 // --------------------------------------------------------------------------
-// SHT20 thermostat setup (Modbus meters only)
+// SHT20 thermostat setup — always present regardless of energy meter type
 // --------------------------------------------------------------------------
-#if !defined(METER_TYPE_ATM90E32)
 // Initialise the SHT20 temperature/humidity sensor at THERMOSTAT_1_ADDR.
+// The SHT20 sits on the RS-485 bus that is separate from the ATM90E32 SPI bus.
 static void setup_sht20() {
     Serial.printf("SETUP: MODBUS: SHT20 #1: address:0x%02X\n", THERMOSTAT_1_ADDR);
     sht20.set_modbus_address(THERMOSTAT_1_ADDR);
     sht20.begin(THERMOSTAT_1_ADDR, _modbus1);
 }
-#endif
 
 // --------------------------------------------------------------------------
 // Per-meter-type setup helpers
@@ -154,11 +155,15 @@ static void setup_meters() {
 // setup_modbus_clients — called by setup_modbus_master after bus init
 // --------------------------------------------------------------------------
 void setup_modbus_clients() {
+    // SHT20 is always initialised — it lives on RS-485 independent of the
+    // energy meter type.
+    setup_sht20();
+
 #if defined(METER_TYPE_ATM90E32)
-    // SPI meter: no SHT20 on RS-485; initialise ATM90E32 ICs directly.
+    // SPI energy meter: initialise ATM90E32 ICs in addition to SHT20.
     setup_atm90e32();
 #else
-    setup_sht20();
+    // Modbus RTU energy meters share the same RS-485 bus as the SHT20.
     setup_meters();
 #endif
 }
@@ -170,22 +175,19 @@ void setup_modbus_clients() {
 /**
  * Initialise the energy meter subsystem.
  *
- * For Modbus meters: resets RS-485 GPIO mux assignments, opens SoftwareSerial,
- * then initialises all devices on the bus.
- *
- * For ATM90E32: skips RS-485 setup and delegates directly to setup_atm90e32()
- * which handles SPI initialisation internally.
+ * Always resets RS-485 GPIO mux assignments and opens SoftwareSerial so the
+ * SHT20 sensor is reachable on all meter-type configurations.  For Modbus
+ * energy meters the same bus also carries the meter devices.  For ATM90E32,
+ * SPI initialisation is handled inside setup_atm90e32().
  */
 void setup_modbus_master() {
-#if !defined(METER_TYPE_ATM90E32)
-    // Reset RS-485 pin mux assignments so SoftwareSerial can claim them cleanly.
+    // RS-485 bus is always needed: the SHT20 sensor uses it regardless of
+    // which energy meter back-end is selected.
     gpio_reset_pin(RS485_1_RX);
     gpio_reset_pin(RS485_1_TX);
     gpio_reset_pin(RS485_2_RX);
     gpio_reset_pin(RS485_2_TX);
-
     _modbus1.begin(RS485_1_BAUD);
-#endif
 
     setup_modbus_clients();
 }
@@ -197,14 +199,18 @@ void setup_modbus_master() {
 /**
  * Copy the latest meter readings into the shared data model.
  * Does not issue any Modbus or SPI transactions; call after polling.
+ *
+ * SHT20 data is always written to inputRegisters regardless of meter type.
+ * Modbus energy meter readings are only written for RTU meter types.
+ * ATM90E32: poll_atm90e32() writes directly to readings[] — no copy needed.
  */
 void update() {
-#if !defined(METER_TYPE_ATM90E32)
-    // SHT20 temperature/humidity into input registers.
+    // SHT20 temperature/humidity into input registers — always present.
     inputRegisters[1] = sht20.getRawTemperature();
     inputRegisters[2] = sht20.getRawHumidity();
 
-    // Energy meter readings — one entry per meter.
+#if !defined(METER_TYPE_ATM90E32)
+    // Energy meter readings — one entry per Modbus RTU meter.
     #if defined(METER_TYPE_DDS238)
     Modbus_DDS238* meters[MODBUS_NUM_METERS] = {&dds238_1, &dds238_2, &dds238_3};
     #elif defined(METER_TYPE_CHD130)
@@ -222,10 +228,9 @@ void update() {
         readings[i].total_energy  = meters[i]->getTotalEnergy();
         readings[i].export_energy = meters[i]->getExportEnergy();
         readings[i].import_energy = meters[i]->getImportEnergy();
+        readings[i].timestamp_last_report = millis();
     }
-
 #endif // !METER_TYPE_ATM90E32
-    // ATM90E32: poll_atm90e32() writes directly to readings[] — no copy needed.
 
     // TODO: extend history buffer and CSV output to all meters, not just index 0
     addCurrentReading(readings[0].current);
@@ -236,6 +241,26 @@ void update() {
 }
 
 // --------------------------------------------------------------------------
+// SHT20 accessors — available to MQTT and other subsystems
+// --------------------------------------------------------------------------
+
+// Returns the last measured temperature in degrees Celsius.
+float get_sht20_temperature() {
+    return sht20.getTemperature();
+}
+
+// Returns the last measured relative humidity as a percentage (0–100).
+float get_sht20_humidity() {
+    return sht20.getHumidity();
+}
+
+// Returns the cumulative number of successful SHT20 poll responses.
+// A non-zero value indicates that at least one valid reading has been received.
+uint16_t get_sht20_success_count() {
+    return sht20.getSuccessCount();
+}
+
+// --------------------------------------------------------------------------
 // Polling helpers
 // --------------------------------------------------------------------------
 
@@ -243,12 +268,12 @@ void update() {
  * Dump any bytes still in the UART RX buffer — called on SHT20 poll failure
  * to help diagnose partial or absent responses from the sensor.
  */
-#if !defined(METER_TYPE_ATM90E32)
 static void dump_uart_rx() {
     delay(200);
     uint8_t buf[16];
     uint8_t n = 0;
     while (_modbus1.available() && n < sizeof(buf)) buf[n++] = _modbus1.read();
+#ifdef ENABLE_DEBUG
     if (n > 0) {
         Serial.printf("MODBUS RAW rx (%d bytes):", n);
         for (uint8_t i = 0; i < n; i++) Serial.printf(" 0x%02X", buf[i]);
@@ -256,8 +281,10 @@ static void dump_uart_rx() {
     } else {
         Serial.println("MODBUS RAW rx: nothing — SHT20 sent no response");
     }
-}
+#else
+    (void)n; // silence unused-variable warning in release builds
 #endif
+}
 
 /**
  * Request fresh readings from all energy meters and push results to the
@@ -289,17 +316,18 @@ void poll_energy_meters() {
 }
 
 /**
- * Request temperature and humidity from the SHT20 thermostat (Modbus meters
- * only — ATM90E32 does not share the RS-485 bus).
+ * Request temperature and humidity from the SHT20 thermostat.
+ * Always runs regardless of energy meter type — SHT20 uses RS-485 which is
+ * independent from the ATM90E32 SPI bus.
  * On failure, dump_uart_rx() captures any stray bytes for diagnosis.
  * TODO: extend to an sht20_thermostats[] array for multiple sensors.
  */
 void poll_thermostats() {
-#if !defined(METER_TYPE_ATM90E32)
+    // Only poll the SHT20; do NOT call update() here.
+    // update() is called by poll_energy_meters() after meter data is fresh,
+    // which prevents the full register-copy from running twice per cycle.
     uint8_t result = sht20.poll();
     if (result != 0x00) dump_uart_rx();
-    update();
-#endif
 }
 
 // --------------------------------------------------------------------------
@@ -314,9 +342,7 @@ void poll_thermostats() {
 void loop_modbus_master() {
     if (millis() - lastPollMillis > ModbusMaster_pollrate) {
         Serial.println("Starting poll cycle...");
-#if !defined(METER_TYPE_ATM90E32)
-        poll_thermostats();
-#endif
+        poll_thermostats();   // always poll SHT20 regardless of energy meter type
         poll_energy_meters();
         lastPollMillis = millis();
     }

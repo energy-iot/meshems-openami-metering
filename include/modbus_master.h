@@ -16,4 +16,10 @@ void setup_modbus_master();
 void loop_modbus_master();
 void update();
 
+// SHT20 temperature/humidity accessors.
+// Available to MQTT and other subsystems regardless of energy meter type.
+float    get_sht20_temperature();    // degrees Celsius
+float    get_sht20_humidity();       // relative humidity, percent (0–100)
+uint16_t get_sht20_success_count();  // cumulative successful poll count (0 = no valid data yet)
+
 

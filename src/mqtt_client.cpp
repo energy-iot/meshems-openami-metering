@@ -107,7 +107,8 @@ last_bandwidth_report_time  time in secs since last report
 #include <ems_env_model.h>    
 //#include "modbus_devices.h"             // added by Kevin - future use
 #include "data_model.h"
-#define ENABLE_DEBUG_MQTT 1  // Note: no '=' — was a pre-existing typo
+// Debug MQTT serial output is controlled by the project-wide ENABLE_DEBUG flag.
+// Do not add a separate ENABLE_DEBUG_MQTT define here.
 
 // some mqtt banditch stats to include hourly/daily as its own publish
 unsigned long mqtt_BWPubOut_payload_bytes = 0;
@@ -199,29 +200,97 @@ boolean mqtt_connect()
   return (1);
 }
 
-void mqtt_publish_EMS_3Ph(String EMSId, const PowerData& meterData) {  // TODO pass EMSdata structured model
-  SunSpecModel213 sunSpecData;
-  // TODO publish Model 213 here
-  // For now assume phase A. This can be extended to put the meter readings in the
-  // correct phase using configuration data about which meter is on which phase.
-  sunSpecData.PhVphA = meterData.voltage;
-  sunSpecData.AphA = meterData.current;
-  sunSpecData.WphA = meterData.active_power * 1000;
-  sunSpecData.TotWhImport = meterData.import_energy * 1000;
-  sunSpecData.TotWhExport = meterData.export_energy * 1000;
-  sunSpecData.Hz = meterData.frequency;
-  sunSpecData.PFphA = meterData.power_factor;
-  sunSpecData.VarphA = meterData.reactive_power * 1000;
+/**
+ * Publish a SunSpec Model 213 (3-phase AC meter) report aggregated from all
+ * available CT channels.
+ *
+ * Channel-to-phase mapping (IC1: channels 0-2, IC2: channels 3-5):
+ *   ch 0, 3 → Phase A
+ *   ch 1, 4 → Phase B
+ *   ch 2, 5 → Phase C
+ *
+ * Current, active power, reactive power, apparent power, and energy are summed
+ * per phase.  Voltage is taken from the first channel assigned to each phase
+ * (IC1 channel for that phase).  Power factor per phase is derived from
+ * active / apparent power (guarded against division by zero).
+ *
+ * Accepts up to 6 channels; extra channels beyond 6 are ignored.
+ */
+void mqtt_publish_EMS_3Ph(const PowerData readings[], int count) {
+  // Channel-to-phase index: 0=A, 1=B, 2=C (IC1 ch 0/1/2 and IC2 ch 3/4/5
+  // map to the same three phases, so two CT channels contribute per phase).
+  static const int CHANNEL_TO_PHASE[6] = {0, 1, 2, 0, 1, 2};
 
-  long timestamp = meterData.timestamp_last_report;
-  String topicBuf = "subpanel_3Ph";
-  // String topicBuf = EMSId;
+  float voltage[3]        = {0.0f};
+  float current[3]        = {0.0f};
+  float active_power[3]   = {0.0f};
+  float reactive_power[3] = {0.0f};
+  float apparent_power[3] = {0.0f};
+  float import_energy[3]  = {0.0f};
+  float export_energy[3]  = {0.0f};
+  bool  volt_set[3]       = {false, false, false};
+  float frequency         = 0.0f;
+  long  timestamp         = 0;
+
+  int effective = (count < 6) ? count : 6;
+  for (int ch = 0; ch < effective; ch++) {
+    int ph = CHANNEL_TO_PHASE[ch];
+    // Use the first (IC1) channel's voltage and frequency for each phase.
+    if (!volt_set[ph]) {
+      voltage[ph] = readings[ch].voltage;
+      volt_set[ph] = true;
+    }
+    if (frequency == 0.0f) frequency = readings[ch].frequency;
+    if (timestamp == 0)    timestamp  = (long)readings[ch].timestamp_last_report;
+    current[ph]        += readings[ch].current;
+    active_power[ph]   += readings[ch].active_power;
+    reactive_power[ph] += readings[ch].reactive_power;
+    apparent_power[ph] += readings[ch].apparent_power;
+    import_energy[ph]  += readings[ch].import_energy;
+    export_energy[ph]  += readings[ch].export_energy;
+  }
+
+  SunSpecModel213 sunSpecData;
+  // Phase A
+  sunSpecData.PhVphA  = voltage[0];
+  sunSpecData.AphA    = current[0];
+  sunSpecData.WphA    = active_power[0]   * 1000.0f;
+  sunSpecData.VarphA  = reactive_power[0] * 1000.0f;
+  sunSpecData.VAphA   = apparent_power[0] * 1000.0f;
+  sunSpecData.PFphA   = (apparent_power[0] > 0.0f)
+                          ? active_power[0] / apparent_power[0] : 0.0f;
+  sunSpecData.TotWhAImport = import_energy[0] * 1000.0f;
+  sunSpecData.TotWhAExport = export_energy[0] * 1000.0f;
+  // Phase B
+  sunSpecData.PhVphB  = voltage[1];
+  sunSpecData.AphB    = current[1];
+  sunSpecData.WphB    = active_power[1]   * 1000.0f;
+  sunSpecData.VarphB  = reactive_power[1] * 1000.0f;
+  sunSpecData.VAphB   = apparent_power[1] * 1000.0f;
+  sunSpecData.PFphB   = (apparent_power[1] > 0.0f)
+                          ? active_power[1] / apparent_power[1] : 0.0f;
+  sunSpecData.TotWhBImport = import_energy[1] * 1000.0f;
+  sunSpecData.TotWhBExport = export_energy[1] * 1000.0f;
+  // Phase C
+  sunSpecData.PhVphC  = voltage[2];
+  sunSpecData.AphC    = current[2];
+  sunSpecData.WphC    = active_power[2]   * 1000.0f;
+  sunSpecData.VarphC  = reactive_power[2] * 1000.0f;
+  sunSpecData.VAphC   = apparent_power[2] * 1000.0f;
+  sunSpecData.PFphC   = (apparent_power[2] > 0.0f)
+                          ? active_power[2] / apparent_power[2] : 0.0f;
+  sunSpecData.TotWhCImport = import_energy[2] * 1000.0f;
+  sunSpecData.TotWhCExport = export_energy[2] * 1000.0f;
+  // Totals across all phases (Wh)
+  sunSpecData.TotWhImport = (import_energy[0] + import_energy[1] + import_energy[2]) * 1000.0f;
+  sunSpecData.TotWhExport = (export_energy[0] + export_energy[1] + export_energy[2]) * 1000.0f;
+  sunSpecData.Hz = frequency;
 
   JsonDocument jsonDoc;
   sunSpecData.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
 
-  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+  mqtt_publish_json("subpanel_3Ph", &jsonDoc);
 }
 
 void mqtt_publish_Meter(int meterId, const PowerData& meterData) { 
@@ -237,47 +306,62 @@ void mqtt_publish_Meter(int meterId, const PowerData& meterData) {
   sunSpecData.TotWhImport = meterData.import_energy * 1000;
   sunSpecData.TotWhExport = meterData.export_energy * 1000;
   sunSpecData.Hz = meterData.frequency;
-  sunSpecData.PF = meterData.power_factor;
-  sunSpecData.Var = meterData.reactive_power * 1000;
+  sunSpecData.PF  = meterData.power_factor;
+  // Assign apparent and reactive power to their correct SunSpec fields.
+  // See data_model.h unit convention: fields stored in kVA/kVAr, * 1000 → VA/VAr.
+  sunSpecData.VA  = meterData.apparent_power  * 1000;
+  sunSpecData.Var = meterData.reactive_power  * 1000;
 // TODO add actioanable locally interpreted metadata to the report 
 
   long timestamp = meterData.timestamp_last_report;
-  String topicBuf = "meter_";
-  topicBuf.concat(meterId);
+  // Use stack buffer to avoid String heap allocation (consistent with mqtt_publish_json).
+  char topicBuf[16];
+  snprintf(topicBuf, sizeof(topicBuf), "meter_%d", meterId);
 
   JsonDocument jsonDoc;
   sunSpecData.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
 
-  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+  mqtt_publish_json(topicBuf, &jsonDoc);
 }
 
-void mqtt_publish_EMS_MFR(String EMSId, long timestamp) { // TODO pass EMSdata structured model
-  String topicBuf = "subpanel_MFR"; // Subtopic under the device topic
+// Publish SunSpec Model 1 manufacturer/nameplate data for this subpanel.
+void mqtt_publish_EMS_MFR(long timestamp) {
   SunSpecModel1_EMS MFRData;
   JsonDocument jsonDoc;
-  MFRData.toJson(jsonDoc);  // This assumes you have a method toJson() defined for harmonics
+  MFRData.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
-
-  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+  mqtt_publish_json("subpanel_MFR", &jsonDoc);
 }
 
-void mqtt_publish_EMS_ENV(String EMSId, long timestamp) {
-  String topicBuf = "subpanel_ENV"; // Subtopic under the device topic
-  JsonDocument jsonDoc;
+// Publish subpanel environmental data — temperature and humidity from the SHT20
+// sensor (always present on the RS-485 bus).
+void mqtt_publish_EMS_ENV(long timestamp) {
   EMS_ENV_Model EMS_ENV_cache;
+  EMS_ENV_cache.timestamp_ms = (unsigned long)timestamp;
+#ifdef ENABLE_MODBUS_MASTER
+  // Only populate sensor values once the SHT20 has returned at least one
+  // successful poll response — avoids publishing 0°C / 0% as real data
+  // during boot or when the sensor is absent.
+  if (get_sht20_success_count() > 0) {
+    EMS_ENV_cache.temperature_C    = get_sht20_temperature();
+    EMS_ENV_cache.humidity_percent = get_sht20_humidity();
+    EMS_ENV_cache.last_modbus_update_ms = millis();
+  }
+#endif
+  JsonDocument jsonDoc;
   EMS_ENV_cache.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
-  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+  mqtt_publish_json("subpanel_ENV", &jsonDoc);
 }
-void mqtt_publish_Harmonics(String EMSId, long timestamp) { // TODO pass EMSdata structured model
-  String topicBuf = "subpanel_harmonics"; // Subtopic under the streetPoleEMS per unique nodal topic
+
+// Publish per-phase harmonic distortion report. TODO: wire real FFT or meter register data.
+void mqtt_publish_Harmonics(long timestamp) {
   SunSpecModel213Harmonics harmonicsData;
   JsonDocument jsonDoc;
-  harmonicsData.toJson(jsonDoc);  // This assumes you have a method toJson() defined for harmonics
+  harmonicsData.toJson(jsonDoc);
   jsonDoc["timestamp"] = timestamp;
-
-  mqtt_publish_json(topicBuf.c_str(), &jsonDoc);
+  mqtt_publish_json("subpanel_harmonics", &jsonDoc);
 }
 
 void mqtt_publish_Leakage(String meterId, const PowerData& meterData) {
@@ -407,7 +491,7 @@ void mqtt_publish_json(const char* subtopic, const JsonDocument* payload) {
         mqtt_publish_count++;
     }
 
-#ifdef ENABLE_DEBUG_MQTT
+#ifdef ENABLE_DEBUG
     Serial.printf("topic: %s, data: %s\n", topicBuf, data);
 #endif
 }
@@ -438,7 +522,7 @@ void mqtt_publish_comma_sep_colon_delim(const char* subtopic, const char * data)
       if (!mqttclient.publish(topicBuf, mqtt_data)) {
        Serial.println("MQTT publish: failed");
       }
-#ifdef ENABLE_DEBUG_MQTT
+#ifdef ENABLE_DEBUG
       Serial.printf("topic: %s, data: %s\n", topicBuf, mqtt_data);
 #endif
     } while (*data++ != 0);
@@ -590,42 +674,49 @@ void loop_mqtt() {
 
         
        // First is to  publish Sunspec model 1 subpanel manufacture details TODO is 1 per day or per hour
-      mqtt_publish_EMS_MFR("", loop_timestamp);  //publish Sunspec model 1 manufacture details
+      mqtt_publish_EMS_MFR(loop_timestamp);  //publish Sunspec model 1 manufacture details
+      #ifdef ENABLE_DEBUG
       Serial.println("Published EMS Model 1 MFR Info");
+      #endif
 
       // publish real time subpanel cabinet environmetals such as temp/pressure/humid/  tamper and 
       // TODO integrate shock and  loud noise and possily street pole image snapsot on demand from mqtt command
-      mqtt_publish_EMS_ENV("", loop_timestamp);
+      mqtt_publish_EMS_ENV(loop_timestamp);
+      #ifdef ENABLE_DEBUG
       Serial.println("Published subpanel environmental data");
+      #endif
       
     // TODO Next publish Sunspec model xyz subpanel DER nameplate capacity  rating 
-      // mqtt_publish_EMS_Rated("", readings[0]);  //publish Sunspec model xyza rating details
+      // mqtt_publish_EMS_Rated(readings[0]);  //publish Sunspec model xyza rating details
       // Serial.println("Published EMS nameplate");
        //TODO publish 1 or 3 phase OPENAMI per subpanel peer phase and per meter/tenant energy usage (TODO scope is consumed, generated, stored, transformed, distributed);
         //TODO  IF 3phase phase subpanel setup then - assume 3 phase subpanel 
 #ifdef ENABLE_MODBUS_MASTER
-      mqtt_publish_EMS_3Ph("", readings[0]);  // publish Sunspec model 213 schema for the 3 phase subpanel
+      mqtt_publish_EMS_3Ph(readings, MODBUS_NUM_METERS);  // publish Sunspec model 213 schema for the 3 phase subpanel
       // TODO else publish single phase subpanel totalizer metrics
-      //  mqtt_publish_EMS_1Ph("", readings[0]);  // publish Sunspec model 213 schema for the 3 phase subpanel
+      //  mqtt_publish_EMS_1Ph(readings[0]);  // publish Sunspec model 213 schema for the 1 phase subpanel
+      #ifdef ENABLE_DEBUG
        Serial.println("Published EMS per Phase Totalizers");
+      #endif
        //next is publish EMS per phase Leakage , TODO adpative rate: if leakage is non zero or leakage fault or leakage changed
       mqtt_publish_Leakage("", readings[0]);
+      #ifdef ENABLE_DEBUG
       Serial.println("Published per phase leakage");
+      #endif
 
       //next is publish EMS per phase Harmonics , TODO adpative rate: if leakage is non zero or leakage fault or leakage changed
-      mqtt_publish_Harmonics("", loop_timestamp);
+      mqtt_publish_Harmonics(loop_timestamp);
+      #ifdef ENABLE_DEBUG
       Serial.println("Published per phase Harmonics");
+      #endif
 
     // next is loop over the subpanel per tenant meters   
     for(int i=0;i<MODBUS_NUM_METERS;i++) {
           mqtt_publish_Meter(i, readings[i]);  
           // TODO add modbus node number and per meter leakage RCD Fault in the readings powerdata
-          Serial.println("Published tenant meter num:");
-  
-        /*char topicId[8];  // debug
-        snprintf(topicId, sizeof(topicId), "%d", i);
-        mqtt_publish_Meter(topicId, readings[i]);
-        */
+          #ifdef ENABLE_DEBUG
+          Serial.printf("Published tenant meter %d\n", i);
+          #endif
         }
 #endif // ENABLE_MODBUS_MASTER
       } else {
@@ -635,8 +726,11 @@ void loop_mqtt() {
     if (millis() - last_bandwidth_report_time >= BANDWIDTH_REPORT_INTERVAL_MS) {
      mqtt_publish_BWPubOut_stats();
      mqtt_publish_BWCmdIn_stats();
+     // Note: last_bandwidth_report_time is already reset inside
+     // mqtt_publish_BWPubOut_stats(); do not reset it again here.
+     #ifdef ENABLE_DEBUG
      Serial.println("Published stats/bandwidth");
-     last_bandwidth_report_time = millis();
+     #endif
     }
 }
 
@@ -666,14 +760,15 @@ boolean mqtt_connected()
 
 // TODO add door contact/tamper and publish in OPENAMI EMS nde subtopic
 void mqtt_publish_door_opened() {
-  char buf[32] = {0};
-  sprintf(buf,"%s/door", topic_device);
+  // Buffer sized to hold topic_device (~40 chars) + "/door" + null terminator.
+  char buf[128] = {0};
+  snprintf(buf, sizeof(buf), "%s/door", topic_device.c_str());
   mqttclient.publish(buf, "open", 0);
 }
 
 void mqtt_publish_door_closed() {
-  char buf[32] = {0};
-  sprintf(buf,"%s/door", topic_device);
+  char buf[128] = {0};
+  snprintf(buf, sizeof(buf), "%s/door", topic_device.c_str());
   mqttclient.publish(buf, "closed", 0);
 }
 

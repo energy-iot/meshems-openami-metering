@@ -169,8 +169,33 @@ void poll_atm90e32() {
         float freq = ic1[board].GetFrequency();
         float temp = ic1[board].GetTemperature();
 
+        // Energy accumulators — per-channel absolute Wh since last IC reset.
+        // GetImportEnergyA/B/C and GetExportEnergyA/B/C return Wh; divide by
+        // 1000 to store in the data model's kWh convention.
+        // TODO: add a software interval-energy accumulator (delta kWh between
+        // polls) for 15-min / hourly / daily billing intervals.
+        // kWh values — double→float truncation done after dividing by 1000.
+        float import_energy_kwh[6];
+        float export_energy_kwh[6];
+        // GetImportEnergy*/GetExportEnergy* return double (Wh).
+        // Divide in double arithmetic before truncating to float to preserve
+        // sub-Wh resolution up to at least ~16 GWh (double mantissa limit).
+        import_energy_kwh[0] = (float)(ic1[board].GetImportEnergyA() / 1000.0);
+        import_energy_kwh[1] = (float)(ic1[board].GetImportEnergyB() / 1000.0);
+        import_energy_kwh[2] = (float)(ic1[board].GetImportEnergyC() / 1000.0);
+        import_energy_kwh[3] = (float)(ic2[board].GetImportEnergyA() / 1000.0);
+        import_energy_kwh[4] = (float)(ic2[board].GetImportEnergyB() / 1000.0);
+        import_energy_kwh[5] = (float)(ic2[board].GetImportEnergyC() / 1000.0);
+        export_energy_kwh[0] = (float)(ic1[board].GetExportEnergyA() / 1000.0);
+        export_energy_kwh[1] = (float)(ic1[board].GetExportEnergyB() / 1000.0);
+        export_energy_kwh[2] = (float)(ic1[board].GetExportEnergyC() / 1000.0);
+        export_energy_kwh[3] = (float)(ic2[board].GetExportEnergyA() / 1000.0);
+        export_energy_kwh[4] = (float)(ic2[board].GetExportEnergyB() / 1000.0);
+        export_energy_kwh[5] = (float)(ic2[board].GetExportEnergyC() / 1000.0);
+
         // Populate shared readings[] — base index for this board is board*6.
         int base = board * 6;
+        unsigned long now_ms = millis();
         for (int ch = 0; ch < 6; ch++) {
             // Flip current sign on export circuits (negative active power).
             if (active_power[ch] < 0.0f) {
@@ -181,11 +206,21 @@ void poll_atm90e32() {
             readings[base + ch].current       = current[ch];
             // ATM90E32 active power is in watts; convert to kW for data model.
             readings[base + ch].active_power  = active_power[ch] / 1000.0f;
-            readings[base + ch].power_factor  = power_factor[ch];
-            readings[base + ch].frequency     = freq;
-            // Store apparent power in reactive_power field as a proxy until
-            // data_model.h gains a dedicated apparent_power member.
-            readings[base + ch].reactive_power = apparent_power[ch] / 1000.0f;
+            // ATM90E32 does not natively provide reactive power; zero the field.
+            // TODO: derive reactive power from apparent and active if needed.
+            readings[base + ch].reactive_power = 0.0f;
+            // ATM90E32 apparent power is in VA; convert to kVA for data model.
+            readings[base + ch].apparent_power = apparent_power[ch] / 1000.0f;
+            readings[base + ch].power_factor   = power_factor[ch];
+            readings[base + ch].frequency      = freq;
+            // Energy already in kWh (division done in double above).
+            readings[base + ch].import_energy  = import_energy_kwh[ch];
+            readings[base + ch].export_energy  = export_energy_kwh[ch];
+            readings[base + ch].total_energy   =
+                readings[base + ch].import_energy + readings[base + ch].export_energy;
+            // Assign CT channel index as meter ID and record poll timestamp.
+            readings[base + ch].meterid              = (uint8_t)(base + ch);
+            readings[base + ch].timestamp_last_report = now_ms;
         }
 
         #ifdef ENABLE_DEBUG

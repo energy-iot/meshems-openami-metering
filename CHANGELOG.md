@@ -2,6 +2,58 @@
 
 ## [Unreleased] - 2026-04-25
 
+### Changed
+
+- `README.md` — Updated Current Status table to reflect active build flags (`METER_TYPE_ATM90E32`, `ENABLE_MODBUS_MASTER`; relays and CAN disabled); corrected DDS238 address mismatch entry as resolved; added ATM90E32 CS pin placeholder issue, duplicate `loop_modbus_client()` call issue, and ATM90E32 field-test status to Known Issues
+- `README.md` — Added two new NESL 865B EMS board diagram images (`NESL 865B_EMS_Board_Diagram.jpg`, `NESL 865B_EMS_Board_Diagram-wCircuitSetup.jpg`) under a new Board Diagrams section; retained legacy V001 pinout as a reference
+- `README.md` — Updated Features section to list multi-meter type support (ATM90E32 SPI + Modbus RTU variants) and reference `FEATURE_FLAGS.md`
+
+---
+
+### Fixed
+
+#### SHT20 thermostat co-existence with ATM90E32 (`src/modbus_master.cpp`, `include/modbus_master.h`, `src/mqtt_client.cpp`)
+
+- `src/modbus_master.cpp` — Removed all `#if !defined(METER_TYPE_ATM90E32)` guards from SHT20-related code; the RS-485 bus and SHT20 sensor are now always initialised and polled regardless of the energy meter type. The ATM90E32 SPI bus and the RS-485 bus are independent, so both can run in parallel.
+- `src/modbus_master.cpp` — `SoftwareSerial` and `Modbus_SHT20` objects, `setup_sht20()`, `dump_uart_rx()`, and `poll_thermostats()` are no longer conditionally excluded for `METER_TYPE_ATM90E32`
+- `src/modbus_master.cpp` — `setup_modbus_master()` always initialises RS-485 GPIO pins and SoftwareSerial; ATM90E32 mode previously skipped this, leaving the SHT20 unreachable
+- `src/modbus_master.cpp` — `loop_modbus_master()` always calls `poll_thermostats()`; previously the SHT20 was never polled in ATM90E32 mode
+- `src/modbus_master.cpp` — Added `get_sht20_temperature()`, `get_sht20_humidity()`, and `get_sht20_success_count()` accessor functions that return converted float values (°C, %) and the cumulative successful poll count
+- `src/modbus_master.cpp` — `dump_uart_rx()` diagnostic output is now guarded by `#ifdef ENABLE_DEBUG` to suppress serial noise in production builds
+- `include/modbus_master.h` — Added declarations for the three SHT20 accessor functions
+- `src/mqtt_client.cpp` — `mqtt_publish_EMS_ENV()` now populates `EMS_ENV_cache.temperature_C` and `humidity_percent` from the live SHT20 sensor via the new accessors; sensor data is only written after `get_sht20_success_count() > 0` to prevent publishing `0°C / 0%` before the first valid poll completes
+
+#### Code review fixes (`src/meter_atm90e32.cpp`, `src/modbus_master.cpp`, `src/mqtt_client.cpp`)
+
+- `src/meter_atm90e32.cpp` — Fixed float precision loss in ATM90E32 energy accumulation: `GetImportEnergy*/GetExportEnergy*` return `double` (Wh); division by 1000 is now performed in `double` arithmetic before truncating to `float`, preserving sub-Wh resolution across the full accumulator range
+- `src/modbus_master.cpp` / `include/modbus_master.h` — Added `get_sht20_success_count()` accessor and wired it into `mqtt_publish_EMS_ENV()` to guard against publishing `0°C / 0%` before the sensor has responded
+- `src/modbus_master.cpp` — `dump_uart_rx()` serial output guarded by `#ifdef ENABLE_DEBUG`
+
+---
+
+#### Data model correctness (`include/data_model.h`, `src/meter_atm90e32.cpp`, `src/modbus_master.cpp`, `src/mqtt_client.cpp`)
+
+- `include/data_model.h` — Removed duplicate `Power1PhData` struct (byte-for-byte copy of `PowerData`) and its orphaned `extern Power1PhData last_power_reading` declaration; struct was never used
+- `include/data_model.h` — Added dedicated `float apparent_power = 0; // kVA` field to `PowerData`; previous code incorrectly stored apparent power in the `reactive_power` field
+- `include/data_model.h` — Added unit-convention block comment above `PowerData` documenting that all power fields use kW/kVAr/kVA and that MQTT serialisers multiply by 1000 for SunSpec compliance
+- `include/data_model.h` — Changed `float meterid` → `uint8_t meterid` and `float phase` → `int8_t phase` in `PowerData`; these are integer identifiers, not measurements
+- `src/meter_atm90e32.cpp` — Wrote `apparent_power` to the new dedicated field and zeroed `reactive_power` (ATM90E32 does not natively provide reactive power; TODO comment added)
+- `src/meter_atm90e32.cpp` — Set `readings[base+ch].meterid = (uint8_t)(base + ch)` per channel so each CT slot has a unique meter ID
+- `src/meter_atm90e32.cpp` — Set `readings[base+ch].timestamp_last_report = millis()` after each poll so MQTT packets no longer publish timestamp `0`
+- `src/meter_atm90e32.cpp` — Added ATM90E32 energy totalizer reads: `GetImportEnergyA/B/C` and `GetExportEnergyA/B/C` per IC, converted Wh→kWh and stored in `import_energy` / `export_energy` / `total_energy`; energy fields now publish real accumulated values instead of zeros
+- `src/modbus_master.cpp` — Changed Modbus node addresses from non-standard `0x50/0x51/0x52` to standard factory default `0x01/0x02/0x03`; added installer comment
+- `src/modbus_master.cpp` — Removed spurious `update()` call from `poll_thermostats()`; `update()` is already called by `poll_energy_meters()`, so the full register-copy was running twice per poll cycle
+- `src/modbus_master.cpp` — Set `readings[i].timestamp_last_report = millis()` inside the Modbus `update()` loop so Modbus-backed meters also record a valid poll timestamp
+- `src/mqtt_client.cpp` — Replaced hardcoded `#define ENABLE_DEBUG_MQTT 1` with the project-wide `#ifdef ENABLE_DEBUG` guard; debug MQTT serial spew is no longer always on
+- `src/mqtt_client.cpp` — Replaced all `#ifdef ENABLE_DEBUG_MQTT` guards with `#ifdef ENABLE_DEBUG` for consistency
+- `src/mqtt_client.cpp` — Guarded all `Serial.println("Published …")` calls in `loop_mqtt()` with `#ifdef ENABLE_DEBUG`
+- `src/mqtt_client.cpp` — Removed bandwidth double-reset: `last_bandwidth_report_time = millis()` after the stat-publish block was a no-op duplicate; `mqtt_publish_BWPubOut_stats()` already resets the variable internally
+- `src/mqtt_client.cpp` — Fixed door-topic buffer overflow: `char buf[32]` was too small for `topic_device` (~40 chars) + `/door`; increased to `char buf[128]` and switched to `snprintf` with length bound
+- `src/mqtt_client.cpp` — Fixed `mqtt_publish_Meter()` SunSpec field mapping: `sunSpecData.VA` now receives `apparent_power * 1000` (was unassigned, always 0) and `sunSpecData.Var` now correctly receives `reactive_power * 1000` (was wrongly receiving apparent power via the misnamed field)
+- `src/mqtt_client.cpp` — Rewrote `mqtt_publish_EMS_3Ph()`: signature changed from `(String EMSId, const PowerData&)` to `(const PowerData readings[], int count)`; function now aggregates all CT channels using a phase-to-channel map (IC1 ch 0/1/2 → Phase A/B/C, IC2 ch 3/4/5 → same phases); per-phase current, active/reactive/apparent power, and energy are summed; per-phase PF is derived from active/apparent (div-by-zero guarded); `VAphA/B/C` and per-phase energy fields are now populated
+- `src/mqtt_client.cpp` — Removed unused `String EMSId` parameter from `mqtt_publish_EMS_MFR`, `mqtt_publish_EMS_ENV`, and `mqtt_publish_Harmonics`; updated all call sites in `loop_mqtt()`
+- `src/mqtt_client.cpp` — Converted `mqtt_publish_Meter()` subtopic from `String` + `concat` to `char[16]` + `snprintf`, matching the existing stack-buffer pattern in `mqtt_publish_json()`
+
 ### Added
 
 #### Multi-meter type support and ATM90E32 6-channel meter driver

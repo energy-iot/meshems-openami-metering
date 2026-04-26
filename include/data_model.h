@@ -37,40 +37,29 @@ extern uint16_t inputRegisters[MODBUS_NUM_INPUT_REGISTERS];
 // Staging or install or at maintenance time  scan the subpanel and all active networking parts installed to the subpanel
 // are auto provisoned in a backend Db addressable to the MS subpanel globally unique QR code
 
+// Unit convention for PowerData power fields:
+//   active_power   — kW   (kilowatts)
+//   reactive_power — kVAr (kilovolt-amperes reactive)
+//   apparent_power — kVA  (kilovolt-amperes apparent)
+//   energy fields  — kWh  (kilowatt-hours)
+// MQTT serialisers multiply by 1000 to produce W / VAr / VA / Wh for SunSpec compliance.
 struct PowerData {  // single phase per meter data, equivalent to per tenant
     unsigned long timestamp_last_report = 0;
-    float total_energy = 0;  // kWh
-    float export_energy = 0; // kWh
-    float import_energy = 0; // kWh
-    float stored_energy =0;  // kWh
+    float total_energy = 0;    // kWh
+    float export_energy = 0;   // kWh
+    float import_energy = 0;   // kWh
+    float stored_energy = 0;   // kWh
     float transform_energy = 0; // tracks total energy transformed AC-DC inverted and converted dc-dc or ac-ac
-    float voltage = 0;       // V
-    float current = 0;       // A
-    float active_power = 0;  // kW
-    float reactive_power = 0; // kVAr
-    float power_factor = 0;  // 0-1
-    float frequency = 0;     // Hz
-    float phase  = 0;        // a,b,c if 3 phase EMS subpanel, or 0 if single phase subpanel
-    float meterid = 0;       // use modbus node number 
-    float metadata = 0;      // 1-247 (high byte), 1-16 (low byte)
-};
-
-struct Power1PhData {  // single phase per meter data, equivalent to per tenant
-    unsigned long timestamp_last_report = 0;
-    float total_energy = 0;  // kWh
-    float export_energy = 0; // kWh
-    float import_energy = 0; // kWh
-    float stored_energy =0;  // kWh
-    float transform_energy = 0; // tracks total energy transformed AC-DC inverted and converted dc-dc or ac-ac
-    float voltage = 0;       // V
-    float current = 0;       // A
-    float active_power = 0;  // kW
-    float reactive_power = 0; // kVAr
-    float power_factor = 0;  // 0-1
-    float frequency = 0;     // Hz
-    float phase  = 0;        // a,b,c if 3 phase EMS subpanel, or 0 if single phase subpanel
-    float meterid = 0;       // use modbus node number 
-    float metadata = 0;      // 1-247 (high byte), 1-16 (low byte)
+    float voltage = 0;         // V
+    float current = 0;         // A
+    float active_power = 0;    // kW
+    float reactive_power = 0;  // kVAr
+    float apparent_power = 0;  // kVA
+    float power_factor = 0;    // 0-1
+    float frequency = 0;       // Hz
+    int8_t phase = 0;          // 0=A, 1=B, 2=C (phase assignment in 3-phase subpanel)
+    uint8_t meterid = 0;       // Modbus node number or CT channel index (0-based)
+    float metadata = 0;        // 1-247 (high byte), 1-16 (low byte)
 };
 
 struct Power3PhData {  // each EMS subpanel has 3phase multiple tenants  per pahse multiple per phase totals
@@ -107,7 +96,6 @@ void addCurrentReading(float value);
 
 extern PowerData last_reading; // older cache data to allow easier iterative design testing and debugging
 extern Power3PhData last_EMS_power_reading;  // 3 phase streetpole EMS ( include EMS subpanel scoped energy data totalized per phase)
-extern Power1PhData last_power_reading;         // TODO make per meter/tenant per phase modbus node num unique to EMS only
 extern HarmonicsData last_harmonics_reading;    // TODO breakout Harmonics data Current and Voltage per phase as its own 
 extern LeakageData last_leakage_reading;        // Leakage data is measured reported and actionable  perm streetPoleEMS per phase
                                                 // TODO single phase meter can have per phase leakage either as mRCM or RCD
