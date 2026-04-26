@@ -22,8 +22,7 @@ class DTMPowerCache {
 public:
   void init();
   void addSamples(const std::map<String, String>& raw);
-  //JsonDocument buildJson();
-  DynamicJsonDocument buildJson();
+  JsonDocument buildJson();
   void resetStats();
 
   const std::map<String, Stats>& getStats() const { return statsMap; }

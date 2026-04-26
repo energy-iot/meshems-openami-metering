@@ -16,6 +16,22 @@ ModbusRTUSlave::ModbusRTUSlave(HardwareSerial& serial, uint8_t dePin) {
   _dePin = dePin;
 }
 
+ModbusRTUSlave::ModbusRTUSlave(Stream& serial, uint8_t dePin) {
+  _hardwareSerial = 0;
+  #ifdef __AVR__
+  _softwareSerial = 0;
+  #endif
+  #ifdef HAVE_CDCSERIAL
+  _usbSerial = 0;
+  #endif
+  _serial = &serial;
+  _coils = 0;
+  _discreteInputs = 0;
+  _holdingRegisters = 0;
+  _inputRegisters = 0;
+  _dePin = dePin;
+}
+
 #ifdef __AVR__
 ModbusRTUSlave::ModbusRTUSlave(SoftwareSerial& serial, uint8_t dePin) {
   _hardwareSerial = 0;

@@ -48,8 +48,7 @@
 
 void setup() {
     Serial.begin(115200);   // Initialize serial communication for debugging
-    Serial.println("INFO - Booting...Setup in 3s");
-    delay(3000);
+    Serial.println("INFO - Booting");
     
     generateDeviceID();
 
@@ -73,13 +72,14 @@ void setup() {
     // Initialize Modbus RTU master/client communication
     setup_modbus_master(); // This sets up modbus master or "server" on RS485_1 with sensors like the SHT20 temp/humidity sensor or other devices
     setup_modbus_client(); // This sets up a modbus slave or "client" interface on RS485_2
+    
     //setup_gpio  // ssr, temp_humid, door contact/tamper. shock, imaging)
     
     //setup_can(); // Initialize CAN bus communication
 
     setup_buttons();
     setup_i2c_ssr_bank();
-    
+
     _console.addLine(" EMS In-service Ready!");
     _console.addLine("  CHECK MQTT @");
     _console.addLine("  public.cloud.shiftr.io"); //TODO grab the setup strings from the config file
