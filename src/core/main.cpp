@@ -35,12 +35,15 @@
  * Feature flags (set in platformio.ini build_flags):
  * ============================================================
  *   -DENABLE_OLED_DISPLAY    SH1106 OLED display over SPI
- *   -DENABLE_WIFI            WiFi connectivity
- *   -DENABLE_MQTT            MQTT client (auto-enables ENABLE_WIFI)
+ *   -DENABLE_WIFI            WiFi connectivity (mutually exclusive with ENABLE_ETHERNET)
+ *   -DENABLE_ETHERNET        W5500 SPI Ethernet via HR961160C (BOARD_VER_V3 only; mutually exclusive with ENABLE_WIFI)
+ *   -DENABLE_MQTT            MQTT client (requires ENABLE_WIFI or ENABLE_ETHERNET)
  *   -DENABLE_CAN             CAN bus via MCP2515 (separate SPI instance)
  *   -DENABLE_MODBUS_MASTER   Modbus master / RS485_1
  *   -DENABLE_MODBUS_CLIENT   Modbus client/slave / RS485_2
  *   -DENABLE_RELAYS          Relay control: onboard SSR + I2C 8-channel SSR bank (PCF8574)
+ *   -DENABLE_SD_CARD         SD card reader via SPI (BOARD_VER_V3 only)
+ *   -DENABLE_SD_SHT20_LOG    Log SHT20 readings to /environmental_log.csv; interval set by SD_SHT20_LOG_INTERVAL_MS (default 60 s)
  *   -DENABLE_DEBUG           Extra debug Serial logging
  * ============================================================
  */
@@ -53,8 +56,8 @@
 #include <core/pins.h>
 #include <hw/buttons.h>
 
-// ---- SPI (shared between display and CAN; include once) --------------------
-#if defined(ENABLE_OLED_DISPLAY) || defined(ENABLE_CAN)
+// ---- SPI (shared between display, CAN, SD card, and Ethernet; include once) -
+#if defined(ENABLE_OLED_DISPLAY) || defined(ENABLE_CAN) || defined(ENABLE_SD_CARD) || defined(ENABLE_ETHERNET)
   #include <SPI.h>
 #endif
 
@@ -69,16 +72,25 @@
   #include <comms/can.h>
 #endif
 
-// ---- WiFi -------------------------------------------------------------------
-// MQTT requires WiFi; guard against someone enabling MQTT without WiFi.
+// ---- Network interface ------------------------------------------------------
+// Exactly one of ENABLE_WIFI or ENABLE_ETHERNET must be defined when networking
+// is needed. ENABLE_MQTT requires at least one.
+#if defined(ENABLE_WIFI) && defined(ENABLE_ETHERNET)
+  #error "ENABLE_WIFI and ENABLE_ETHERNET are mutually exclusive. Enable only one."
+#endif
+
 #ifdef ENABLE_MQTT
-  #ifndef ENABLE_WIFI
-    #error "ENABLE_MQTT requires ENABLE_WIFI. Add -DENABLE_WIFI to your build_flags."
+  #if !defined(ENABLE_WIFI) && !defined(ENABLE_ETHERNET)
+    #error "ENABLE_MQTT requires ENABLE_WIFI or ENABLE_ETHERNET."
   #endif
 #endif
 
 #ifdef ENABLE_WIFI
   #include <comms/wifi.h>
+#endif
+
+#ifdef ENABLE_ETHERNET
+  #include <comms/ethernet.h>
 #endif
 
 // ---- MQTT -------------------------------------------------------------------
@@ -101,6 +113,16 @@
 #ifdef ENABLE_RELAYS
   #include <hw/relay.h>
   #include <hw/i2c_ssr_bank.h>
+#endif
+
+// ---- SD Card ----------------------------------------------------------------
+#ifdef ENABLE_SD_CARD
+  #include <hw/sd_card.h>
+#endif
+
+// ---- SD SHT20 CSV Logger ----------------------------------------------------
+#ifdef ENABLE_SD_SHT20_LOG
+  #include <hw/sd_logger.h>
 #endif
 
 
@@ -135,6 +157,10 @@ void setup() {
     setup_wifi();
 #endif
 
+#ifdef ENABLE_ETHERNET
+    setup_ethernet();
+#endif
+
 #ifdef ENABLE_MQTT
     setup_mqtt_client();
 #endif
@@ -162,6 +188,14 @@ void setup() {
 #ifdef ENABLE_RELAYS
     setup_relays();
     setup_i2c_ssr_bank();
+#endif
+
+#ifdef ENABLE_SD_CARD
+    setup_sd_card();
+#endif
+
+#ifdef ENABLE_SD_SHT20_LOG
+    setup_sht20_csv_log();
 #endif
 
 #ifdef ENABLE_DEBUG
@@ -259,6 +293,10 @@ void loop() {
 
     // ==================== Peripheral sub-loops ==========================
 
+#ifdef ENABLE_ETHERNET
+    loop_ethernet();
+#endif
+
 #ifdef ENABLE_OLED_DISPLAY
     loop_display();
 #endif
@@ -270,6 +308,10 @@ void loop() {
 #ifdef ENABLE_RELAYS
     loop_relays();
     loop_i2c_ssr_bank_serial();
+#endif
+
+#ifdef ENABLE_SD_SHT20_LOG
+    loop_sht20_csv_log();
 #endif
 
 }

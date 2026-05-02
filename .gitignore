@@ -70,6 +70,7 @@ credentials.*
 compile_commands.json
 .ccls-cache/
 *.dSYM/
+*.clangd
 
 # Misc
 *.kilo

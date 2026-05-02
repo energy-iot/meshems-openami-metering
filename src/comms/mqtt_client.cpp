@@ -88,7 +88,12 @@ last_bandwidth_report_time  time in secs since last report
 #ifdef ENABLE_MQTT
 #include "comms/mqtt_client.h"
 #include <TimeLib.h>
-#include <WiFiMulti.h>
+#ifdef ENABLE_WIFI
+  #include <WiFiMulti.h>
+#endif
+#ifdef ENABLE_ETHERNET
+  #include <Ethernet.h>
+#endif
 #include <core/data_model.h>
 #include <core/config.h>
 #include <ArduinoJson.h>
@@ -122,8 +127,12 @@ unsigned long last_bandwidth_report_time = 0;
 const unsigned long BANDWIDTH_REPORT_INTERVAL_MS = 300000; // debug only 5 min report interval on mqtt bandwidth stats per subpanel
 
 
-WiFiClient transportClient;                 // the network client for MQTT (also works with EthernetLarge)
-PubSubClient mqttclient(transportClient);   // the MQTT client
+#ifdef ENABLE_ETHERNET
+  EthernetClient transportClient;
+#else
+  WiFiClient transportClient;
+#endif
+PubSubClient mqttclient(transportClient);
 
 // TODO is to allow build time control bools here to enable openami schema subtopics to be included or not based on a subpanel model - TBD
 

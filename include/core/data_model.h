@@ -79,20 +79,22 @@ struct HarmonicsData {  // TODO expand this struct for all powerdata OR have dif
     float metadata = 0;      // 1-247 (high byte), 1-16 (low byte)
 };
 
-// Current history data structure for timeline graph
+// Per-meter circular buffer of recent current readings used by the display graph.
+// One slot per meter; indexed 0..MODBUS_NUM_METERS-1.
 typedef struct {
-    float values[CURRENT_HISTORY_SIZE];  // Circular buffer for current values
-    int currentIndex;                    // Current position in the buffer
-    int count;                           // Number of readings stored (up to CURRENT_HISTORY_SIZE)
-    float minValue;                      // Minimum value in the buffer (for auto-scaling)
-    float maxValue;                      // Maximum value in the buffer (for auto-scaling)
+    float values[CURRENT_HISTORY_SIZE] = {};  // circular buffer
+    int currentIndex = 0;                     // write head (next slot to overwrite)
+    int count = 0;                            // valid entries (0..CURRENT_HISTORY_SIZE)
+    float minValue = 0.0f;                    // running min for auto-scale
+    float maxValue = 1.0f;                    // running max (>0 prevents /0 before first read)
 } CurrentHistory;
 
-extern CurrentHistory currentHistory;
+// One history buffer per meter — display reads [0] for the on-screen graph.
+extern CurrentHistory currentHistory[MODBUS_NUM_METERS];
 extern PowerData readings[]; // Array to hold readings for each meter
 
-// Function to add a new current reading to the history buffer
-void addCurrentReading(float value);
+// Append a current sample to the circular buffer for the given meter index.
+void addCurrentReading(int meterIdx, float value);
 
 extern PowerData last_reading; // older cache data to allow easier iterative design testing and debugging
 extern Power3PhData last_EMS_power_reading;  // 3 phase streetpole EMS ( include EMS subpanel scoped energy data totalized per phase)

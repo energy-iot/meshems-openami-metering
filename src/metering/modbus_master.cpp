@@ -232,12 +232,20 @@ void update() {
     }
 #endif // !METER_TYPE_ATM90E32
 
-    // TODO: extend history buffer and CSV output to all meters, not just index 0
-    addCurrentReading(readings[0].current);
-    Serial.printf("DATA,%lu,%.3f,%.3f,%.3f,%.3f,%.3f\n",
-                  millis(), readings[0].current, readings[0].voltage,
-                  readings[0].active_power, readings[0].power_factor,
-                  readings[0].frequency);
+#ifdef USB_PLOTTER
+    // Record each meter's current in its own history buffer and emit a CSV
+    // line to the Arduino Serial Plotter.
+    // CSV columns: DATA, meter_index, timestamp_ms, current_A, voltage_V,
+    //              active_power_kW, power_factor, frequency_Hz
+    for (int i = 0; i < MODBUS_NUM_METERS; i++) {
+        addCurrentReading(i, readings[i].current);
+        Serial.printf("DATA,%d,%lu,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+                      i, millis(),
+                      readings[i].current, readings[i].voltage,
+                      readings[i].active_power, readings[i].power_factor,
+                      readings[i].frequency);
+    }
+#endif // USB_PLOTTER
 }
 
 // --------------------------------------------------------------------------

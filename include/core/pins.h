@@ -88,9 +88,18 @@
 
     // ==================== SD CARD ====================
     // Verified by Liam April 23 2026 
-    #define SD_MOSI 11
-    #define SD_CLK 12    
-    #define SD_MISO 13
+    #define SD_CS GPIO_NUM_10
+    #define SD_CLK GPIO_NUM_12
+    #define SD_MOSI GPIO_NUM_11
+    #define SD_MISO GPIO_NUM_13
+
+    // ==================== Ethernet Interface ====================
+    // Verified by Liam May 1 2026 
+    #define ETH_CS GPIO_NUM_9
+    #define ETH_CLK GPIO_NUM_12
+    #define ETH_MOSI GPIO_NUM_11
+    #define ETH_MISO GPIO_NUM_13
+    #define ETH_RST GPIO_NUM_3
 
     // ==================== SPI OLED DISPLAY ====================
     // Verified by Liam April 23 2026
@@ -136,7 +145,7 @@
 
     // Uses a separate SPIClass (canSPI) — does NOT share pins with the OLED SPI bus
     // (OLED occupies GPIO 11/12/13 via the default SPI instance).
-    #define CAN0_CS     10  // SPI chip select
+    #define CAN0_CS     41  // SPI chip select
     #define CAN0_SO     15  // SPI MISO
     #define CAN0_SI     16  // SPI MOSI
     #define CAN0_SCK    17  // SPI clock

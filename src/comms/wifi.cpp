@@ -3,22 +3,17 @@
 #include <WiFiMulti.h>
 #include <comms/wifi.h>
 
-//Kenya hackathon
-//#define WIFI_PW "E@rthday2025"
-//#define WIFI_SSID "EMSLab"
+
+#define WIFI_SSID "Eris"
+#define WIFI_PW "AlphaTangoLima!"
 
 //NESL Lab
 // #define WIFI_PW "E@rthday2025"
 // #define WIFI_SSID "EMSLab"
 
-//NESL Lab
-#define WIFI_SSID "Port Labs Members"
-#define WIFI_PW "lesstalkmorewifi"
-
-//secret lab
-//#define WIFI_SSID "Starlink"
-//#define WIFI_PW "tikka2013"
-
+//Port Labs
+// #define WIFI_SSID "Port Labs Members"
+// #define WIFI_PW "lesstalkmorewifi"
 
 int CONNECT_ATTEMPTS = 6;
 WiFiMulti wifiMulti;

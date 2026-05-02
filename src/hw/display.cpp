@@ -188,26 +188,26 @@ bool drawCurrentTimelineFrame(SH1106 *display, SH1106UiState* state, int x, int 
   display->drawRect(graphX, graphY, graphWidth, graphHeight);
   
   // Check if we have any data
-  if (currentHistory.count == 0) {
+  if (currentHistory[0].count == 0) {
     display->drawString(10, 30, "No data available");
     return false;
   }
   
   // Draw Y-axis labels (current values)
   char buf[10];
-  sprintf(buf, "%0.1f", currentHistory.maxValue);
+  sprintf(buf, "%0.1f", currentHistory[0].maxValue);
   display->drawString(0, graphY, buf);
-  sprintf(buf, "%0.1f", currentHistory.minValue);
+  sprintf(buf, "%0.1f", currentHistory[0].minValue);
   display->drawString(0, graphY + graphHeight - 10, buf);
   
   // Calculate display parameters
-  float yRange = currentHistory.maxValue - currentHistory.minValue;
+  float yRange = currentHistory[0].maxValue - currentHistory[0].minValue;
   if (yRange <= 0) yRange = 1.0; // Avoid division by zero
   
   // Add 10% padding to the range for better visualization
   float padding = yRange * 0.1;
-  float scaledMin = currentHistory.minValue - padding;
-  float scaledMax = currentHistory.maxValue + padding;
+  float scaledMin = currentHistory[0].minValue - padding;
+  float scaledMax = currentHistory[0].maxValue + padding;
   float scaledRange = scaledMax - scaledMin;
   
   // Draw the timeline
@@ -215,22 +215,22 @@ bool drawCurrentTimelineFrame(SH1106 *display, SH1106UiState* state, int x, int 
   int lastY = -1;
   
   // Calculate how many points to plot (based on buffer size and display width)
-  int numPoints = min(currentHistory.count, graphWidth - 2);
+  int numPoints = min(currentHistory[0].count, graphWidth - 2);
   int xStep = (graphWidth - 2) / numPoints;
   if (xStep < 1) xStep = 1;
   
   // Calculate the starting index in the circular buffer
   int startIdx = 0;
-  if (currentHistory.count >= CURRENT_HISTORY_SIZE) {
+  if (currentHistory[0].count >= CURRENT_HISTORY_SIZE) {
     // Buffer is full, so start from the oldest point
-    startIdx = (currentHistory.currentIndex) % CURRENT_HISTORY_SIZE;
+    startIdx = (currentHistory[0].currentIndex) % CURRENT_HISTORY_SIZE;
   }
   
   // Draw each point
   for (int i = 0; i < numPoints; i++) {
     // Get the value from the circular buffer
     int bufIdx = (startIdx + i) % CURRENT_HISTORY_SIZE;
-    float value = currentHistory.values[bufIdx];
+    float value = currentHistory[0].values[bufIdx];
     
     // Scale to display coordinates
     int pointX = graphX + 1 + i * xStep;
@@ -277,7 +277,7 @@ bool drawCurrentTimelineFrame(SH1106 *display, SH1106UiState* state, int x, int 
   }
   
   // Draw current value on the graph
-  float currentVal = currentHistory.values[(currentHistory.currentIndex - 1 + CURRENT_HISTORY_SIZE) % CURRENT_HISTORY_SIZE];
+  float currentVal = currentHistory[0].values[(currentHistory[0].currentIndex - 1 + CURRENT_HISTORY_SIZE) % CURRENT_HISTORY_SIZE];
   sprintf(buf, "Current: %0.2f A", currentVal);
   display->drawString(30, 0, buf);
   
