@@ -72,21 +72,24 @@
 #endif
 
 // Voltage gain for 9 V AC transformer (Jameco 157041) on meter v1.3+
-// For meter <= v1.2 with 9 V Jameco 112336, use 42080.
-// For meter <= v1.2 with 12 V Jameco 167151, use 32428.
 #ifndef ATM90E32_VOLTAGE_GAIN
 #define ATM90E32_VOLTAGE_GAIN 7305
 #endif
 
 // Current gain for 100A/50mA SCT-013-000 CT at PGA 1×.
 // Common alternatives (PGA 1×):
-//   20A/25mA  SCT-006:     11131
-//   30A/1V    SCT-013-030: 8650
-//   50A/1V    SCT-013-050: 15420
-//   80A/26.6mA SCT-010:   41996
-//   120A/40mA SCT-016:    41880
+// SCT-006 20A/25mA	11143
+// SCT-013-030 30A/1V	 8650
+// SCT-013-050 50A/1V	 15420
+// SCT-010 50A/16.6mA	 41334
+// SCT-010 80A/26.6mA	 41660
+// SCT-013-000 100A/50mA 27518
+// SCT-016 120A/40mA	 41787
+// SCT-024 200A/100mA	 27518
+// SCT-024 200A/50mA	 55036
+
 #ifndef ATM90E32_CURRENT_GAIN
-#define ATM90E32_CURRENT_GAIN 27961
+#define ATM90E32_CURRENT_GAIN 41660
 #endif
 
 // --------------------------------------------------------------------------

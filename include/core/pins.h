@@ -44,6 +44,13 @@
     // ==================== RELAY ==========================
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR
 
+    // ==================== CAN INTERFACE (MCP2515) ==================
+    #define CAN0_CS     2   //SPI chip select
+    #define CAN0_SO     42  //SPI MISO
+    #define CAN0_SI     41  //SPI MOSI
+    #define CAN0_SCK    8   //SPI clock
+    #define CAN0_INT    17  //Message interrupt output
+
 // Board Version 2 - 2025 
 #elif defined(BOARD_VER_V2)
     // analog button array (voltage divider)
@@ -72,6 +79,13 @@
 
     // ==================== RELAY ==========================
     #define RELAY_1_PIN 38  //Pin to toggle the onboard SSR
+
+    // ==================== CAN INTERFACE (MCP2515) ==================
+    #define CAN0_CS     2   //SPI chip select
+    #define CAN0_SO     42  //SPI MISO
+    #define CAN0_SI     41  //SPI MOSI
+    #define CAN0_SCK    8   //SPI clock
+    #define CAN0_INT    17  //Message interrupt output
 
 #elif defined(BOARD_VER_V3)
     // esp32s3 devkitc n16r8 onboard rgbw led
@@ -141,15 +155,13 @@
     #define PCF8574_I2C_ADDR   0x27
 
     // ==================== CAN INTERFACE (MCP2515) ==================
-    // ==== NOTE: There is no MCP 2515 on the 865B PCB pins are defined to prevent compilation error ===
-
     // Uses a separate SPIClass (canSPI) — does NOT share pins with the OLED SPI bus
     // (OLED occupies GPIO 11/12/13 via the default SPI instance).
-    #define CAN0_CS     41  // SPI chip select
-    #define CAN0_SO     15  // SPI MISO
-    #define CAN0_SI     16  // SPI MOSI
-    #define CAN0_SCK    17  // SPI clock
-    #define CAN0_INT    18  // MCP2515 interrupt output (active-low)
+    #define CAN0_CS     GPIO_NUM_41  // SPI chip select
+    #define CAN0_SO     GPIO_NUM_45  // SPI MISO
+    #define CAN0_SI     GPIO_NUM_16  // SPI MOSI
+    #define CAN0_SCK    GPIO_NUM_17  // SPI clock
+    #define CAN0_INT    GPIO_NUM_1  // MCP2515 interrupt output (active-low)
 
     // ==================== ATM90E32 6-CHANNEL SPI METER ====================
     // The ATM90E32 shares the same SPI bus as the OLED/SD (MOSI=11, CLK=12,
@@ -166,7 +178,7 @@
     #define ATM90E32_MOSI        GPIO_NUM_11  // Shared SPI bus (OLED/SD)
     #define ATM90E32_MISO        GPIO_NUM_13  // Shared SPI bus (OLED/SD)
     #define ATM90E32_CLK         GPIO_NUM_12  // Shared SPI bus (OLED/SD)
-    #define ATM90E32_IC1_CS      GPIO_NUM_33  // TODO: verify for target board
-    #define ATM90E32_IC2_CS      GPIO_NUM_34  // TODO: verify for target board
+    #define ATM90E32_IC1_CS      GPIO_NUM_15  // Verifed by Liam May 1 2026
+    #define ATM90E32_IC2_CS      GPIO_NUM_18  // Verifed by Liam May 1 2026
 #endif
 

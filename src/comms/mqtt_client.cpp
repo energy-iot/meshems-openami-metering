@@ -680,8 +680,6 @@ void loop_mqtt() {
       // TODO not all telemetry has to publish on same loop iteration, different rates of publish , 
       // target requirement is publish on a adaptive meaningful rate is a lean bandwidth on the meshed G3/PLC/Wireless/LORA MAC/PHY future iteration
 
-
-        
        // First is to  publish Sunspec model 1 subpanel manufacture details TODO is 1 per day or per hour
       mqtt_publish_EMS_MFR(loop_timestamp);  //publish Sunspec model 1 manufacture details
       #ifdef ENABLE_DEBUG

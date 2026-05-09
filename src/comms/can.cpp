@@ -1,4 +1,4 @@
-#ifdef ENABLE_CAN
+#if defined(ENABLE_CAN) && defined(CAN0_CS)
  /*****************************************************************************
  * @file can.cpp
  * @brief Interface code to allow reading/writing of CAN 2.0 messages to an MCP2515 device
@@ -235,4 +235,4 @@ void printCANMessage(long unsigned int canId, byte length, byte *data, bool isTx
    END FILE
  *********************************************************************************************************/
 
-#endif // ENABLE_CAN
+#endif // defined(ENABLE_CAN) && defined(CAN0_CS)

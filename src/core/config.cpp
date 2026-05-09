@@ -5,7 +5,13 @@ char device_id[MAX_DEVICE_ID_CHARS] = {0};
 
 // this data can be downloaded from a linux java policy server aggregation node for every m streetpoleEMS nodes
 int ModbusMaster_pollrate = 10000;  // in milliseconds — 10s between poll cycles
-int MQTTPublish_rootrate = 300000; // in milliseconds
+
+#ifdef ENABLE_DEBUG
+  int MQTTPublish_rootrate = 30000; // in milliseconds — publish every 30 seconds in debug builds for faster feedback; use 300000 (5 min) in production
+#else
+  int MQTTPublish_rootrate = 300000; // in milliseconds — publish every 5 minutes in production
+#endif
+
 int MQTTPoll_rate = 10000;         // in milliseconds
 // TODO add different appropriate mqtt publish rates for environmental vs stats vs RCMleaks and harmonics vs real time billing energy usage 
 // keep the BPS donw below 300kbps , ideally 100 kbps per multitenant subpanel - reduce string char lengths convert to binary compression etc
