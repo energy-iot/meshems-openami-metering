@@ -8,7 +8,8 @@
  * - RS-485 interfaces (dual channels using HW-519 modules)
  * - Relay control
  * - CAN bus interface (MCP2515)
- * 
+ * - SD card interface (W5500 Ethernet and SD card share SPI bus; separate CS pins)
+ * - Ethernet controller (W5500)
  * 
  * Author(s): Doug Mendonca, Liam O'Brien
  *****************************************************************************/
@@ -154,23 +155,11 @@
     // PCF8574: 0x20-0x27 from DIP A2/A1/A0. PCF8574A often uses 0x38-0x3F.
     #define PCF8574_I2C_ADDR   0x27
 
-    // ==================== CAN INTERFACE (MCP2515) ==================
-    // Uses a separate SPIClass (canSPI) — does NOT share pins with the OLED SPI bus
-    // (OLED occupies GPIO 11/12/13 via the default SPI instance).
-    #define CAN0_CS     GPIO_NUM_41  // SPI chip select
-    #define CAN0_SO     GPIO_NUM_45  // SPI MISO
-    #define CAN0_SI     GPIO_NUM_16  // SPI MOSI
-    #define CAN0_SCK    GPIO_NUM_17  // SPI clock
-    #define CAN0_INT    GPIO_NUM_1  // MCP2515 interrupt output (active-low)
-
     // ==================== ATM90E32 6-CHANNEL SPI METER ====================
     // The ATM90E32 shares the same SPI bus as the OLED/SD (MOSI=11, CLK=12,
     // MISO=13) but requires unique chip-select pins per IC.
-    //
-    // CS pins below are PLACEHOLDER values — verify and update to match the
-    // actual wiring on your board before enabling METER_TYPE_ATM90E32.
-    // GPIO 33 and 34 are used here as they are free on the 865B pinout.
-    //
+    
+    // For a single-board setup (ATM90E32_NUM_BOARDS=1), only IC1_CS and IC2_CS are used.
     // For add-on boards (ATM90E32_NUM_BOARDS >= 2), define additional CS pins:
     //   ATM90E32_IC1_CS_1, ATM90E32_IC2_CS_1   (board 2)
     //   ATM90E32_IC1_CS_2, ATM90E32_IC2_CS_2   (board 3)
