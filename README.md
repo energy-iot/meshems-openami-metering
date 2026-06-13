@@ -1,16 +1,69 @@
 # EIOT.Energy EMS DER/Site Controller Dev Kit - OpenAMI Metering Application
 
 ## Overview
-A development kit based on the ESP32S3 N16R8 DEV KIT C1 for energy management systems (EMS) with support for various communication protocols and peripherals. There are a few N16R8 40/42/44 pin layouts. Th EMS kit th \evariant where the rgbw led is top center mounted just below the WROOM ESP32S3 surface mount module. All variants will work except the pins layout differs. 
+This branch of the MeshEMS platform targets the OpenAMI metering application. The **NESL 865B EMS board** pairs an ESP32-S3 N16R8 (dual-core LX7, 16 MB flash, 8 MB PSRAM) with a purpose-built AC metering add-on and peripherals stack (Ethernet, SD Card reader, OLED display). For energy metering applications either Modbus RTU energy meters (DDS238, CHD130, DDSU666 single-phase); or the CircuitSetup ATM90E32 6-channel SPI meter for 3-phase / multi-CT sites. In addition to the SHT20 temp/humidity sensor which communicates via Modbus. Telemetry is published over WiFi via MQTT; an onboard SSR and optional external I2C PCF8574 8-channel SSR bank provide load-control outputs.
+
+### [BETA] Under Development
+A SPIFFS-hosted web dashboard (MapLibre + Chart.js) gives operators a live relay map and per-house energy timeline — currently validated against the Nearly Free Energy Sezibwa Homes site layout in Uganda.
+
+## Table of Contents
+
+- [Features](#features)
+- [Board Diagrams](#board-diagrams)
+- [Hardware Overview](#hardware-overview)
+  - [Core Specifications](#core-specifications)
+  - [RS-485 MODBUS RTU Module](#hw-519-breakout-rs-485-modbus-rtu-module)
+  - [CANBUS V2.0 Interface](#mcp2515-breakout---canbus-v20-interface)
+  - [Additional Communication Options](#additional-communication-options)
+  - [Input/Output Capabilities](#inputoutput-capabilities)
+  - [Power Supply Options](#power-supply-options)
+  - [⚠️ AC Power Safety](#️-warning-ac-power-safety)
+  - [Physical Specifications](#physical-specifications)
+  - [IOT MUG 8-Channel I2C SSR Board](#iot-mug-8-channel-i2c-ssr-board)
+  - [Upload & Serial Monitor (macOS)](#upload--serial-monitor-macos)
+- [Web Dashboard + GeoJSON](#web-dashboard--geojson)
+- [Dev Environment Installation Guide](#dev-environment-installation-guide)
+- [Contributing](#contributing)
 
 ## Features
 This development kit supports multiple peripherals using the PlatformIO and Arduino framework:
-- RS-485 MODBUS RTU communication
-- CANBUS V2.0 interface via SPI
+- RS-485 MODBUS RTU communication (DDS238, CHD130, DDSU666 single-phase meters)
+- CircuitSetup ATM90E32 6-channel SPI energy meter (3-phase / multi-CT)
+- CANBUS V2.0 interface via SPI (MCP2515)
 - Input buttons (using voltage divider array on analog GPIO)
 - 1.3in OLED Display over SPI (SH1106)
+- Feature-flag build system — compile only the subsystems you need (see `FEATURE_FLAGS.md`)
 
-<img src="/ems_board_pinout_V001.png" alt="board" width="650"/>
+All optional subsystems are guarded by `#ifdef` feature flags set in `platformio.ini`.  See [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md) for the full flag reference and example configurations.
+
+
+### Current Feature Status
+
+Active build flags (see `platformio.ini`): `ENABLE_OLED_DISPLAY`, `ENABLE_WIFI`, `ENABLE_MQTT`, `ENABLE_MODBUS_MASTER`, `ENABLE_DEBUG`, `METER_TYPE_ATM90E32`.
+
+| Feature/Component | Status | Notes |
+|---|---|---|
+| WiFi / MQTT | ✅ Working | Connects to broker, publishes all topics |
+| ATM90E32 6-Ch SPI Meter | ✅ Working / Not field-tested | New driver; CS pins GPIO 33/34 are placeholders — verify against board schematic before use. See known issue below. |
+| SHT20 Temp/Humidity (Modbus) | ✅ Working | Ensure that Modbus device address does not clash with other modbus meter devices |
+| DDS238 / CHD130 / DDSU666 (Modbus) | ✅ Working, disabled by default | Addresses corrected to `0x01–0x03`. Enable by setting `METER_TYPE_DDS238` (or variant) in `platformio.ini`. |
+| I2C SSR Bank (PCF8574) | ✅ Working, disabled by default | `ENABLE_RELAYS` is commented out in `platformio.ini`. Uncomment to activate. |
+| Onboard SSR Output (GPIO38) | ✅ Working, disabled by default | Controlled by `ENABLE_RELAYS`; same flag as I2C SSR bank. |
+| MCP2515 CAN | ❌ Disabled | Not available on the Version 865B PCBA |
+
+## Board Diagrams
+
+### NESL 865B EMS Board
+
+<img src="NESL%20865B_EMS_Board_Diagram.jpg" alt="NESL 865B EMS Board Diagram" width="700"/>
+
+### NESL 865B EMS Board — with CircuitSetup ATM90E32 6-Channel Meter
+
+<img src="NESL%20865B_EMS_Board_Diagram-wCircuitSetup.jpg" alt="NESL 865B EMS Board Diagram with CircuitSetup ATM90E32" width="700"/>
+
+### Legacy MeshEMS Board (V001) built in 2025
+
+<img src="ems_board_pinout_V001.png" alt="EMS Board Pinout V001" width="650"/>
 
 ## Hardware Overview
 
@@ -73,9 +126,133 @@ This development kit includes a connection for AC power input. When working with
 **⚠️ Failure to follow these safety guidelines could result in severe electrical shock, fire, serious injury, or death. ⚠️**
 
 ### Physical Specifications
-- PCB Dimensions: 150mm x 90mm (main board) includes DIY peripherals expansion area 50mm x 40mm
+- PCB Dimensions: 150mm x 90mm (main board)
 - Mounting: 4x M3 mounting holes (3.2mm diameter)
-- 50mm x 40mm spare PCB room for BYO periperals, sd card, Ethernet, G3 Alliance dual mac/phy, Lora Meshtastic, etc
+
+
+---
+
+### IOT MUG 8-Channel I2C SSR Board
+
+**Product:** [IOT MUG 8-Channel I2C Solid State Relay Module](https://www.iotmug.com/8-channel-i2c-solid-state-relay-module)
+
+#### I2C Address
+The board uses **0x27** (all address DIP switches ON) or **0x3F** (PCF8574A variant). Check the red DIP switch block on the board — the default out of box is **0x27**. Set `PCF8574_I2C_ADDR` in `include/pins.h` to match.
+
+#### Wiring (BOARD_VER_V3)
+| SSR Board Pin | EMS Board Connection | GPIO |
+|---|---|---|
+| VCC | 5V | — |
+| GND | GND | — |
+| SDA | SSR2 header | GPIO 14 |
+| SCL | SSR1 header | GPIO 20 |
+
+`I2C_SSR_SDA_GPIO` and `I2C_SSR_SCL_GPIO` in `include/pins.h` must match the physical wiring. Avoid GPIO46 — it has an internal pull-down that locks up the I2C bus.
+
+#### Channel Mapping
+The PCF8574 P0 bit maps to **relay 8** on the IOT MUG board (reversed order):
+
+| Bit | Relay |
+|---|---|
+| P7 (bit 7) | Relay 1 |
+| P6 (bit 6) | Relay 2 |
+| ... | ... |
+| P0 (bit 0) | Relay 8 |
+
+The firmware uses active-low logic (`I2C_SSR_ACTIVE_LOW 1`) which matches the IOT MUG board.
+
+---
+
+### Upload & Serial Monitor (macOS)
+
+The ESP32-S3 DevKitC-1 has **two USB-C ports**:
+- **COM port** (via CH343P UART bridge) — use this for both flashing and serial monitor
+- **USB port** (native ESP32-S3 USB) — not needed for normal dev use
+
+Always use the **COM port**. The firmware has `ARDUINO_USB_CDC_ON_BOOT` disabled so `Serial` output goes to UART0 (COM port), keeping flash and monitor on the same connector.
+
+If upload fails with "Resource busy", a `screen` session may be holding the port:
+```bash
+lsof /dev/cu.usbmodem*   # find the PID
+kill <PID>
+```
+
+Flash command:
+```bash
+pio run -t upload --upload-port /dev/cu.usbmodemXXXXX
+```
+
+Serial monitor:
+```bash
+screen /dev/cu.usbmodemXXXXX 115200
+# Exit: Ctrl+A, K, Y
+```
+
+---
+
+## Web Dashboard + GeoJSON
+
+This branch now includes an operator-focused web dashboard served by the ESP32:
+
+- `/` serves `data/index.html` (MapLibre + Chart.js UI)
+- `/api/dashboard` returns dashboard JSON with embedded GeoJSON features
+- `/api/relay?board=<id>&channel=<id>&state=<0|1>` toggles relay state and returns command result
+
+### Scope clarification (important)
+
+- This dashboard is a **simulation interface running on lab equipment**.
+- It is designed to represent a **real field operating context** and field topology we are connected to through an operator relationship.
+- It is **not** a 1:1 production deployment of the field control stack.
+- In the current lab setup, only board 0 channels 0-7 are hardware-backed via the IoTMug I2C SSR; other channels/data are simulated.
+
+### What is shown in the dashboard
+
+- Satellite basemap with site/court geometry
+- House points (10 homes) with per-house relay state color:
+  - **Green** = connected / relay ON
+  - **Red** = disconnected / relay OFF
+- A one-day simulated timeline per house (hourly kWh values)
+- Relay controls with explicit action buttons:
+  - **TURN ON** (green action button)
+  - **TURN OFF** (red action button)
+
+### GeoJSON notes
+
+- House points are emitted as proper GeoJSON Point coordinates in `[lon, lat, z]` order.
+- Court/path and feeder lines are emitted as LineString features.
+- The current implementation uses one StreetPoleEMS board with 10 house points for visualization.
+- Board 0 channels 0-7 are hardware-backed via IoTMug I2C SSR; channels 8-9 are currently simulated.
+
+### Deployment gotcha: upload filesystem content
+
+If `/api/dashboard` works but `/` does not load the UI, upload SPIFFS filesystem assets:
+
+```bash
+pio run -t uploadfs --upload-port /dev/cu.usbmodemXXXXX
+pio run -t upload   --upload-port /dev/cu.usbmodemXXXXX
+```
+
+---
+
+## Nearly Free Energy (Uganda) site-layout reference
+
+The current court/house layout in the dashboard is based on the Nearly Free Energy Sezibwa Homes site-layout page (Uganda), then represented in GeoJSON for this ESP32 dashboard workflow.
+
+- Source page: https://bookstack.nearlyfreeenergy.com/books/business/page/site-layout
+- In this repo, those house coordinates are embedded in `src/main.cpp` and exposed through `/api/dashboard`.
+
+When updating site geometry, keep the source-of-truth process simple:
+
+1. Capture site coordinates (survey/GPS or engineering drawing export)
+2. Store as `lat,lon` source data
+3. Convert to GeoJSON output order `lon,lat`
+4. Validate by opening `/api/dashboard` and confirming house placement on satellite map
+
+### Field screenshot (Uganda relay map dashboard)
+
+- Screenshot file: [`uganda_relay_01.png`](uganda_relay_01.png)
+
+![StreetPoleEMS Uganda relay map dashboard](uganda_relay_01.png)
 
 ## Dev Environment Installation Guide
 ### Prerequisites
@@ -102,7 +279,7 @@ This development kit includes a connection for AC power input. When working with
 1. Open a terminal/command prompt
 2. Navigate to the directory where you want to store the project
 3. Clone the repository using git:
-4. `git clone https://github.com/nesl-admin/ems-dev.git`
+4. `git clone https://github.com/energy-iot/meshems-openami-metering.git`
 5. `git checkout <your-feature-branch>
 6. Follow steps 4 and 5.
 7. Use `git commit -s` to sign your Pull Request commits.
@@ -136,7 +313,6 @@ This development kit includes a connection for AC power input. When working with
   - You have proper USB drivers installed for your development board
   - Your board is in bootloader mode (if required)
 - Check the PlatformIO documentation for additional help: https://docs.platformio.org/
-
 
 ### Front-of-Meter IEEE ISV StreetPoleEMS Integrations
 

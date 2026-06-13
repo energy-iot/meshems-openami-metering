@@ -1,7 +1,30 @@
 #include "ModbusRTUSlave.h"
+#include <config.h>
+
+#if MODBUS_SERIAL_LOG
+#define MBRTU_LOG(x) do { x; } while (0)
+#else
+#define MBRTU_LOG(x) ((void)0)
+#endif
 
 ModbusRTUSlave::ModbusRTUSlave(HardwareSerial& serial, uint8_t dePin) {
   _hardwareSerial = &serial;
+  #ifdef __AVR__
+  _softwareSerial = 0;
+  #endif
+  #ifdef HAVE_CDCSERIAL
+  _usbSerial = 0;
+  #endif
+  _serial = &serial;
+  _coils = 0;
+  _discreteInputs = 0;
+  _holdingRegisters = 0;
+  _inputRegisters = 0;
+  _dePin = dePin;
+}
+
+ModbusRTUSlave::ModbusRTUSlave(Stream& serial, uint8_t dePin) {
+  _hardwareSerial = 0;
   #ifdef __AVR__
   _softwareSerial = 0;
   #endif
@@ -122,7 +145,7 @@ void ModbusRTUSlave::begin(uint8_t id, unsigned long baud, uint32_t config) {
 
 void ModbusRTUSlave::poll() {
   if (_serial->available()) {
-    Serial.printf("MB2 incoming: :%d\n",_buf[1]);
+    MBRTU_LOG(Serial.printf("MB2 incoming: :%d\n",_buf[1]));
     if (_readRequest()) {
       switch (_buf[1]) {
         case 1:
@@ -154,7 +177,7 @@ void ModbusRTUSlave::poll() {
           break;
       }
     } else {
-      Serial.println("read err");
+      MBRTU_LOG(Serial.println("read err"));
     }
   }
 }
@@ -162,7 +185,7 @@ void ModbusRTUSlave::poll() {
 void ModbusRTUSlave::_processReadCoils() {
   uint16_t startAddress = _bytesToWord(_buf[2], _buf[3]);
   uint16_t quantity = _bytesToWord(_buf[4], _buf[5]);
-  Serial.printf("rc: start:%d, cnt:%d\n",startAddress,quantity);
+  MBRTU_LOG(Serial.printf("rc: start:%d, cnt:%d\n",startAddress,quantity));
 
   if (!_coils || _numCoils == 0) _exceptionResponse(1);
   else if (quantity == 0 || quantity > 2000) _exceptionResponse(3);
@@ -179,7 +202,7 @@ void ModbusRTUSlave::_processReadCoils() {
 void ModbusRTUSlave::_processReadDiscreteInputs() {
   uint16_t startAddress = _bytesToWord(_buf[2], _buf[3]);
   uint16_t quantity = _bytesToWord(_buf[4], _buf[5]);
-  Serial.printf("rdi: start:%d, cnt:%d\n",startAddress,quantity);
+  MBRTU_LOG(Serial.printf("rdi: start:%d, cnt:%d\n",startAddress,quantity));
 
   if (!_discreteInputs || _numDiscreteInputs == 0) _exceptionResponse(1);
   else if (quantity == 0 || quantity > 2000) _exceptionResponse(3);
@@ -196,7 +219,7 @@ void ModbusRTUSlave::_processReadDiscreteInputs() {
 void ModbusRTUSlave::_processReadHoldingRegisters() {
   uint16_t startAddress = _bytesToWord(_buf[2], _buf[3]);
   uint16_t quantity = _bytesToWord(_buf[4], _buf[5]);
-  Serial.printf("rhr: start:%d, cnt:%d\n",startAddress,quantity);
+  MBRTU_LOG(Serial.printf("rhr: start:%d, cnt:%d\n",startAddress,quantity));
   if (!_holdingRegisters || _numHoldingRegisters == 0) _exceptionResponse(1);
   else if (quantity == 0 || quantity > 125) _exceptionResponse(3);
   else if (quantity > _numHoldingRegisters || startAddress > (_numHoldingRegisters - quantity)) _exceptionResponse(2);
@@ -213,7 +236,7 @@ void ModbusRTUSlave::_processReadHoldingRegisters() {
 void ModbusRTUSlave::_processReadInputRegisters() {
   uint16_t startAddress = _bytesToWord(_buf[2], _buf[3]);
   uint16_t quantity = _bytesToWord(_buf[4], _buf[5]);
-  Serial.printf("rir: start:%d, cnt:%d\n",startAddress,quantity);
+  MBRTU_LOG(Serial.printf("rir: start:%d, cnt:%d\n",startAddress,quantity));
 
   if (!_inputRegisters || _numInputRegisters == 0) _exceptionResponse(1);
   else if (quantity == 0 || quantity > 125) _exceptionResponse(3);
@@ -295,20 +318,20 @@ bool ModbusRTUSlave::_readRequest() {
   } while (micros() - startTime <= _charTimeout && numBytes < MODBUS_RTU_SLAVE_BUF_SIZE);
   //} while (bytes_avail);
   while (micros() - startTime < _frameTimeout);
-  Serial.printf("numBytes:%d _buf[0]:%d, _id:%d _crc:%d, _btw:%d\n",numBytes,_buf[0],_id,_crc(numBytes - 2),_bytesToWord(_buf[numBytes - 1], _buf[numBytes - 2]));
+  MBRTU_LOG(Serial.printf("numBytes:%d _buf[0]:%d, _id:%d _crc:%d, _btw:%d\n",numBytes,_buf[0],_id,_crc(numBytes - 2),_bytesToWord(_buf[numBytes - 1], _buf[numBytes - 2])));
   if (!_serial->available() && (_buf[0] == _id || _buf[0] == 0) && _crc(numBytes - 2) == _bytesToWord(_buf[numBytes - 1], _buf[numBytes - 2])) return true;
   else return false;
 }
 
 void ModbusRTUSlave::_writeResponse(uint8_t len) {
   if (_buf[0] != 0) {
-    Serial.print("resp:");
+    MBRTU_LOG(Serial.print("resp:"));
     uint16_t crc = _crc(len);
     _buf[len] = lowByte(crc);
     _buf[len + 1] = highByte(crc);
     if (_dePin != NO_DE_PIN) digitalWrite(_dePin, HIGH);
     _serial->write(_buf, len + 2);
-    Serial.printf("len:%d b0:%d b1:%d b3:%d b4:%d b5:%d b6:%d b7:%d\n",len,_buf[0],_buf[1],_buf[2],_buf[3],_buf[4],_buf[5],_buf[6]);
+    MBRTU_LOG(Serial.printf("len:%d b0:%d b1:%d b3:%d b4:%d b5:%d b6:%d b7:%d\n",len,_buf[0],_buf[1],_buf[2],_buf[3],_buf[4],_buf[5],_buf[6]));
 
     _serial->flush();
     #ifdef ARDUINO_ARCH_RENESAS
@@ -318,7 +341,7 @@ void ModbusRTUSlave::_writeResponse(uint8_t len) {
     while(_serial->available()) {
       _serial->read();
     }
-    Serial.println();
+    MBRTU_LOG(Serial.println());
   }
 }
 
