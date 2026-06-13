@@ -55,11 +55,8 @@ char msgString[128];                     // Buffer for debug messages
 
 // ==================== SPI & CAN Controller Setup ====================
 
-// Create custom SPI instance for CAN controller (ESP32 default SPI may be used by display)
-SPIClass canSPI = SPIClass();
-
-// Initialize CAN controller with the custom SPI instance
-MCP_CAN CAN0(&canSPI, CAN0_CS);
+// Use global SPI — same SCK/MISO/MOSI as OLED and CircuitSetup meter (see main.cpp SPI.begin).
+MCP_CAN CAN0(&SPI, CAN0_CS);
 
 // ==================== Function Declarations ====================
 
@@ -73,9 +70,6 @@ void setup_can()
 {   
   // Configure pin for interrupt signal from MCP2515
   pinMode(CAN0_INT, INPUT);
-
-  // Initialize secondary SPI interface
-  canSPI.begin(CAN0_SCK, CAN0_SO, CAN0_SI);
 
   if (CAN_DEBUG_LEVEL > 0) {
     Serial.println("INFO - Initializing CAN interface...");

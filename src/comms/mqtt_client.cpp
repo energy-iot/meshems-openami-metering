@@ -97,19 +97,15 @@ last_bandwidth_report_time  time in secs since last report
 #include <core/data_model.h>
 #include <core/config.h>
 #include <ArduinoJson.h>
-#ifdef ENABLE_MODBUS_MASTER
-  #include <metering/modbus_master.h>
-#endif
+#include <metering/modbus_master.h>
 #include <metering/sunspec_model_213.h>            // TODO breaks up into base and harmonics separated subtopics for openami
 #include <metering/sunspec_model_213_base.h>       // stays true to Sunspec base 213 data model schema
 #include <metering/sunspec_model_213_harmonics.h>  // TODO confirm if there is a harmonics report for Sunspec model and adapt or change to be flexible
 #include <metering/leakage_model_ivy41a.h>         // these are actioanable leakage sensor measurements based on Type B leakage
 #include <metering/sunspec_model_1.h>
-#ifdef ENABLE_RELAYS
-  #include <hw/i2c_ssr_bank.h>
-#endif
+#include <hw/i2c_ssr_bank.h>
 #include <metering/sunspec_model_11.h>
-#include <metering/ems_env_model.h>
+#include <metering/ems_env_model.h>    
 //#include "modbus_devices.h"             // added by Kevin - future use
 #include "core/data_model.h"
 // Debug MQTT serial output is controlled by the project-wide ENABLE_DEBUG flag.
@@ -363,9 +359,8 @@ void mqtt_publish_EMS_ENV(long timestamp) {
   jsonDoc["timestamp"] = timestamp;
   mqtt_publish_json("subpanel_ENV", &jsonDoc);
 }
-
-// Publish per-phase harmonic distortion report. TODO: wire real FFT or meter register data.
-void mqtt_publish_Harmonics(long timestamp) {
+void mqtt_publish_Harmonics(long timestamp) { // TODO pass EMSdata structured model
+  String topicBuf = "subpanel_harmonics"; // Subtopic under the streetPoleEMS per unique nodal topic
   SunSpecModel213Harmonics harmonicsData;
   JsonDocument jsonDoc;
   harmonicsData.toJson(jsonDoc);
@@ -692,8 +687,8 @@ void loop_mqtt() {
       #ifdef ENABLE_DEBUG
       Serial.println("Published subpanel environmental data");
       #endif
-      
-    // TODO Next publish Sunspec model xyz subpanel DER nameplate capacity  rating 
+
+    // TODO Next publish Sunspec model xyz subpanel DER nameplate capacity  rating
       // mqtt_publish_EMS_Rated(readings[0]);  //publish Sunspec model xyza rating details
       // Serial.println("Published EMS nameplate");
        //TODO publish 1 or 3 phase OPENAMI per subpanel peer phase and per meter/tenant energy usage (TODO scope is consumed, generated, stored, transformed, distributed);

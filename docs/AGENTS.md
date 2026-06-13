@@ -29,6 +29,19 @@
 - do not leave commented-out code blocks — remove dead code instead
 - do not use multi-line `/* */` block comments for function-level documentation; prefer `//` line comments
 
+## README Maintenance
+
+Whenever you add, remove, or rename a section in `README.md`, update the Table of Contents to match — section titles, anchors, and ordering must stay in sync with the document body.
+
+### Do
+
+- update the ToC immediately after editing any heading in `README.md`
+- verify anchor links are correct (lowercase, spaces replaced with `-`, punctuation stripped)
+
+### Don't
+
+- do not leave the ToC out of date after a README change, no matter how minor
+
 ## Changelog Maintenance
 
 Whenever you make any change to the codebase — bug fixes, new features, refactors, dependency updates, build system changes, or documentation updates — you **must** update `CHANGELOG.md` before finishing the task.

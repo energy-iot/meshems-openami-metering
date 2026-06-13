@@ -14,6 +14,12 @@ void setup_i2c_ssr_bank();
 void loop_i2c_ssr_bank_serial();
 /** Blink SSR channel 1 on/off every 500ms for testing. */
 void loop_i2c_ssr_bank_blink_test();
+/** Set channel state (true=on, false=off). Returns false if write fails or channel is invalid. */
+bool set_i2c_ssr_channel(uint8_t channel, bool on);
+/** Read channel state from local shadow copy (true=on, false=off). */
+bool get_i2c_ssr_channel(uint8_t channel);
+/** Read all channel states from local shadow mask (bit0=channel0 ... bit7=channel7). */
+uint8_t get_i2c_ssr_mask();
 
 /** Store a relay rule for the given channel (0-7). Returns false if channel is out of range. */
 bool set_relay_rule(uint8_t channel, RelayRule rule);

@@ -24,7 +24,9 @@ void Modbus_DDS238::set_modbus_address(uint8_t addr) {
 float Modbus_DDS238::read_modbus_value(uint16_t registerAddress) {
     uint8_t result = readHoldingRegisters(registerAddress, 1);
     if (result != ku8MBSuccess) {
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS DDS238: Error reading register %d\n", registerAddress);
+#endif
         throw std::runtime_error("Modbus read error");
     }
     return getResponseBuffer(0);
@@ -33,7 +35,9 @@ float Modbus_DDS238::read_modbus_value(uint16_t registerAddress) {
 float Modbus_DDS238::read_modbus_extended_value(uint16_t registerAddress) {
     uint8_t result = readHoldingRegisters(registerAddress, 2);
     if (result != ku8MBSuccess) {
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS DDS238: Error reading register %d\n", registerAddress);
+#endif
         throw std::runtime_error("Modbus read error");
     }
     return (float)((getResponseBuffer(0) << 16) | getResponseBuffer(1));
@@ -57,7 +61,7 @@ void Modbus_DDS238::poll() {
         //TODO add energy used totalizer calculations 
 
         // debug option
-        #ifdef DEBUG_METERS
+        #if defined(DEBUG_METERS) && MODBUS_SERIAL_LOG
             Serial.printf("MODBUS DDS238: Total Energy: %.2f kWh\n", last_reading.total_energy);
             Serial.printf("MODBUS DDS238: Export Energy: %.2f kWh\n", last_reading.export_energy);
             Serial.printf("MODBUS DDS238: Import Energy: %.2f kWh\n", last_reading.import_energy);
@@ -71,7 +75,10 @@ void Modbus_DDS238::poll() {
         #endif
 
     } catch (std::runtime_error& e) {
+#if MODBUS_SERIAL_LOG
         Serial.println("MODBUS DDS238: Error reading registers");
+#endif
+        (void)e;
     }
 }
 

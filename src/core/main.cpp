@@ -38,6 +38,8 @@
  *   -DENABLE_WIFI            WiFi connectivity (mutually exclusive with ENABLE_ETHERNET)
  *   -DENABLE_ETHERNET        W5500 SPI Ethernet via HR961160C (BOARD_VER_V3 only; mutually exclusive with ENABLE_WIFI)
  *   -DENABLE_MQTT            MQTT client (requires ENABLE_WIFI or ENABLE_ETHERNET)
+ *   -DENABLE_WEBSERVER       Async HTTP server on port 80: SPIFFS static files + REST API
+ *                            (requires ENABLE_WIFI or ENABLE_ETHERNET; upload data/ with pio run -t uploadfs)
  *   -DENABLE_CAN             CAN bus via MCP2515 (separate SPI instance)
  *   -DENABLE_MODBUS_MASTER   Modbus master / RS485_1
  *   -DENABLE_MODBUS_CLIENT   Modbus client/slave / RS485_2
@@ -96,6 +98,11 @@
 // ---- MQTT -------------------------------------------------------------------
 #ifdef ENABLE_MQTT
   #include <comms/mqtt_client.h>
+#endif
+
+// ---- Web server -------------------------------------------------------------
+#ifdef ENABLE_WEBSERVER
+  #include <comms/webserver.h>
 #endif
 
 // ---- Modbus -----------------------------------------------------------------
@@ -159,6 +166,10 @@ void setup() {
 
 #ifdef ENABLE_ETHERNET
     setup_ethernet();
+#endif
+
+#ifdef ENABLE_WEBSERVER
+    setup_webserver();
 #endif
 
 #ifdef ENABLE_MQTT

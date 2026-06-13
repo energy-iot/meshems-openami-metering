@@ -102,14 +102,14 @@
     #endif
 
     // ==================== SD CARD ====================
-    // Verified by Liam April 23 2026 
+    // Verified by Liam April 23 2026
     #define SD_CS GPIO_NUM_10
     #define SD_CLK GPIO_NUM_12
     #define SD_MOSI GPIO_NUM_11
     #define SD_MISO GPIO_NUM_13
 
     // ==================== Ethernet Interface ====================
-    // Verified by Liam May 1 2026 
+    // Verified by Liam May 1 2026
     #define ETH_CS GPIO_NUM_9
     #define ETH_CLK GPIO_NUM_12
     #define ETH_MOSI GPIO_NUM_11
@@ -136,7 +136,7 @@
     // -----------------    RS485_1 INTERFACE   -----------------------
     #define RS485_1_RX  GPIO_NUM_42  // Connects to HW-519 RXD
     #define RS485_1_TX  GPIO_NUM_7   // Connects to HW-519 TXD
-    
+
     // -----------------    RS485_2 INTERFACE   -----------------------
     #define RS485_2_RX  GPIO_NUM_6 // Connects to HW-519 RXD
     #define RS485_2_TX  GPIO_NUM_4 // Connects to HW-519 RXD
@@ -158,7 +158,7 @@
     // ==================== ATM90E32 6-CHANNEL SPI METER ====================
     // The ATM90E32 shares the same SPI bus as the OLED/SD (MOSI=11, CLK=12,
     // MISO=13) but requires unique chip-select pins per IC.
-    
+
     // For a single-board setup (ATM90E32_NUM_BOARDS=1), only IC1_CS and IC2_CS are used.
     // For add-on boards (ATM90E32_NUM_BOARDS >= 2), define additional CS pins:
     //   ATM90E32_IC1_CS_1, ATM90E32_IC2_CS_1   (board 2)
@@ -169,5 +169,14 @@
     #define ATM90E32_CLK         GPIO_NUM_12  // Shared SPI bus (OLED/SD)
     #define ATM90E32_IC1_CS      GPIO_NUM_15  // Verifed by Liam May 1 2026
     #define ATM90E32_IC2_CS      GPIO_NUM_18  // Verifed by Liam May 1 2026
+
+    // Aliases used by circuitsetup_meter.cpp — map to verified ATM90E32 SPI bus pins above
+    #define CIRCUITSETUP_SPI_MOSI     ATM90E32_MOSI
+    #define CIRCUITSETUP_SPI_MISO     ATM90E32_MISO
+    #define CIRCUITSETUP_SPI_SCK      ATM90E32_CLK
+    #define CIRCUITSETUP_METER_CS_A   ATM90E32_IC1_CS
+    #define CIRCUITSETUP_METER_CS_B   ATM90E32_IC2_CS
+    #define CIRCUITSETUP_IRQ0         33
+    #define CIRCUITSETUP_IRQ1         34
 #endif
 

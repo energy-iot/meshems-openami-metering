@@ -12,6 +12,11 @@
 static uint8_t s_shadow = 0x00;
 static RelayRule relay_rules[8];
 
+// IoTMug board is reversed: logical channel 0 (Relay 1) maps to bit 7.
+static uint8_t logical_to_bit(uint8_t logicalChannel) {
+    return (uint8_t)(7u - logicalChannel);
+}
+
 static uint8_t to_bus_value(uint8_t logical) {
 #if I2C_SSR_ACTIVE_LOW
     return (uint8_t)~logical;
@@ -67,6 +72,39 @@ void loop_i2c_ssr_bank_blink_test() {
     }
 }
 
+bool set_i2c_ssr_channel(uint8_t channel, bool on) {
+    if (channel > 7) {
+        return false;
+    }
+    uint8_t bit = logical_to_bit(channel);
+
+    if (on) {
+        s_shadow |= (uint8_t)(1u << bit);
+    } else {
+        s_shadow &= (uint8_t)~(1u << bit);
+    }
+
+    if (!pcf8574_write(to_bus_value(s_shadow))) {
+        Serial.printf("I2C SSR write fail: logical ch=%u bit=%u mask=0x%02X\n", channel, bit, s_shadow);
+        return false;
+    }
+    Serial.printf("I2C SSR set: logical ch=%u bit=%u -> %s (mask=0x%02X)\n", channel, bit, on ? "ON" : "OFF", s_shadow);
+
+    return true;
+}
+
+bool get_i2c_ssr_channel(uint8_t channel) {
+    if (channel > 7) {
+        return false;
+    }
+    uint8_t bit = logical_to_bit(channel);
+    return (s_shadow & (uint8_t)(1u << bit)) != 0;
+}
+
+uint8_t get_i2c_ssr_mask() {
+    return s_shadow;
+}
+
 bool set_relay_rule(uint8_t channel, RelayRule rule) {
     if (channel > 7) return false;
     relay_rules[channel] = rule;
@@ -83,16 +121,22 @@ void loop_i2c_ssr_bank_serial() {
         char c = (char)Serial.read();
         if (c >= '0' && c <= '7') {
             int bit = c - '0';
-            s_shadow ^= (uint8_t)(1u << bit);
-            if (pcf8574_write(to_bus_value(s_shadow))) {
+            bool next = !get_i2c_ssr_channel((uint8_t)bit);
+            if (set_i2c_ssr_channel((uint8_t)bit, next)) {
                 Serial.printf("ch %d -> %s (mask 0x%02X)\n", bit,
                               (s_shadow & (1u << bit)) ? "ON" : "OFF", s_shadow);
             } else {
                 Serial.println("I2C write failed");
             }
         } else if (c == 'a' || c == 'A') {
-            s_shadow = 0x00;
-            if (pcf8574_write(to_bus_value(s_shadow))) {
+            bool ok = true;
+            for (uint8_t channel = 0; channel < 8; channel++) {
+                if (!set_i2c_ssr_channel(channel, false)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
                 Serial.println("all channels off");
             }
         } else if (c == '?' || c == 'h') {

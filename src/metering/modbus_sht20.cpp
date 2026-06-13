@@ -1,8 +1,10 @@
 #include <metering/modbus_sht20.h>
 #include <TimeLib.h>
+#include <core/config.h>
 
 #define PAUSE_ON_RAMP_LEVELS 30000
 
+#if MODBUS_SERIAL_LOG
 static const char* mbErrStr(uint8_t err) {
     switch (err) {
         case 0x01: return "ILLEGAL_FUNCTION";
@@ -16,6 +18,7 @@ static const char* mbErrStr(uint8_t err) {
         default:   return "UNKNOWN";
     }
 }
+#endif
 
 Modbus_SHT20::Modbus_SHT20() {
     temperature = -1;
@@ -43,11 +46,15 @@ float Modbus_SHT20::getRawHumidity()    { return humidity; }
 void Modbus_SHT20::route_poll_response(uint16_t reg, uint16_t response) {
     switch (reg) {
         case rTEMPERATURE:
+#if MODBUS_SERIAL_LOG
             Serial.printf("MODBUS SHT20: Temperature: %2.1fC\n", response/10.0);
+#endif
             temperature = response;
             break;
         case rHUMIDITY:
+#if MODBUS_SERIAL_LOG
             Serial.printf("MODBUS SHT20: Humidity %2.1f%%\n", response/10.0);
+#endif
             humidity = response;
             break;
         default: break;
@@ -61,13 +68,17 @@ uint8_t Modbus_SHT20::poll() {
         timestamp_last_report = now();
         temperature = getResponseBuffer(0);
         humidity = getResponseBuffer(1);
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS SHT20 [addr:%d]: T=%2.1fC  RH=%2.1f%%  (ok:%d fail:%d)\n",
                       modbus_address, temperature/10.0, humidity/10.0, success_count, fail_count);
+#endif
     } else {
         fail_count++;
         timestamp_last_failure = now();
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS SHT20 [addr:%d]: POLL FAIL  err=0x%02X (%s)  (ok:%d fail:%d)\n",
                       modbus_address, result, mbErrStr(result), success_count, fail_count);
+#endif
     }
     return result;
 }
@@ -78,8 +89,10 @@ uint8_t Modbus_SHT20::query_register(uint16_t reg) {
         route_poll_response(reg, getResponseBuffer(0));
     } else {
         timestamp_last_failure = now();
+#if MODBUS_SERIAL_LOG
         Serial.printf("MODBUS SHT20 [addr:%d]: query_register(%d) FAIL  err=0x%02X (%s)\n",
                       modbus_address, reg, result, mbErrStr(result));
+#endif
     }
     return result;
 }
