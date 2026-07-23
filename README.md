@@ -294,11 +294,30 @@ When updating site geometry, keep the source-of-truth process simple:
 1. Wait for PlatformIO to download all required dependencies (libraries)
   **IMPORTANT:** Set the environment to ESP32S3 N16R8 DEV KIT C
   - Open the platformio.ini file in the project root
-  - Make sure the environment section contains [env:esp32-s3-devkitc-1 , esp32s3_n16r8] or similar
-  - If not, add or modify the environment section to match the ESP32S3 N16R8 DEV KIT C
-  - select a latest working branch of project for example visualize vs openami 3phase mqtt vs future others (leakage, diagnostics, etc)
+  - Make sure the `platformio.ini` file has an environment section for the DevKitC-1 board — `[env:esp32-s3-devkitc-1]`. The bracket name is just a label; what matters is that the block sets `board = esp32-s3-devkitc-1`. This targets the ESP32-S3 N16R8 (16 MB flash / 8 MB PSRAM) dev kit.
+  - If that section is missing, add or modify it to match the ESP32-S3 DevKitC-1.
+2. **Choose the right branch for your application.** Different variants of the project live on separate git branches. The `main` branch is the OpenAMI 3-phase metering application (WiFi + MQTT + ATM90E32 6-channel meter) and is what this guide describes — most users should stay on `main`. Check out a different branch only if you need a specific in-progress feature. Current branches:
+     - `main` — OpenAMI 3-phase MQTT metering (default; recommended)
+     - `modbus-testing` — Modbus RTU meter testing work
+     - `hack-relays` — relay-control experiments
 
-### Step 6: Build and Flash the Firmware
+### Step 6: Add Your WiFi Credentials (`secrets.h`)
+The firmware reads your WiFi network name and password from an `include/secrets.h` file. This file is **gitignored** (so credentials are never committed), which means it does not exist after a fresh clone — **the build will fail with `fatal error: secrets.h: No such file or directory` until you create it.**
+
+1. Copy the template `include/secrets_example.h` to `include/secrets.h` (same folder). From the project root:
+   ```
+   cp include/secrets_example.h include/secrets.h
+   ```
+2. Open `include/secrets.h` and fill in your credentials:
+   ```c
+   #define WIFI_SSID "your-network-name"
+   #define WIFI_PW   "your-password"
+   ```
+   - Values are case-sensitive and must stay in quotes.
+   - The ESP32-S3 connects to **2.4 GHz** WiFi only — it cannot join a 5 GHz-only network.
+   - MQTT broker settings are **not** here — they live in `include/core/config.h` (`MQTT_SERVER` / `MQTT_USER` / `MQTT_PW`).
+
+### Step 7: Build and Flash the Firmware
 1. Connect your ESP32S3 DEV KIT to your computer via USB-C
 2. In VSCode, click on the PlatformIO icon in the left sidebar
 3. Select "Project Tasks" from the menu
@@ -306,15 +325,49 @@ When updating site geometry, keep the source-of-truth process simple:
 5. After successful build, click "Upload" to flash the firmware to your device
 6. Monitor the progress in the terminal window at the bottom of VSCode
 
+### Step 8: Verify It's Running
+
+A successful **Upload** only means the firmware was written to flash. To confirm it's actually running, open the **Serial Monitor** (PlatformIO sidebar → `esp32-s3-devkitc-1` → General → **Monitor**, or run `pio device monitor`). It runs at **115200 baud** (`monitor_speed` in `platformio.ini`). Press the board's **reset/EN** button to watch it boot from the start.
+
+A healthy boot looks like this:
+
+```
+INFO - Booting
+wifi: <your-SSID>: 192.168.x.x                              ← real IP = WiFi + secrets.h OK
+MQTT connected: public.cloud.shiftr.io                      ← broker reached
+MQTT: SUBSCRIBED TO COMMAND TOPIC: openami/StreetPoleEMS_XXXXXX/cmd
+SETUP: ATM90E32: ready
+...
+topic: openami/StreetPoleEMS_XXXXXX/subpanel_3Ph, data: {...}   ← OpenAMI telemetry publishing
+```
+
+What confirms success:
+- **`INFO - Booting`** — firmware started (not just flashed).
+- **A real IP address** (not `FAILED`) — WiFi joined with your `secrets.h` credentials.
+- **`MQTT connected`** and repeating `topic: openami/...` publish lines — the full telemetry pipeline is alive.
+
+**End-to-end check (optional):** the board publishes to the public broker `public.cloud.shiftr.io` under `openami/#`. View live messages at [shiftr.io](https://www.shiftr.io/), or with the MQTT CLI:
+```
+mosquitto_sub -h public.cloud.shiftr.io -u public -P public -t 'openami/#' -v
+```
+
+> **All-zero values and "no response" messages are normal on a bench board.** If no physical meter or sensor is attached, you'll see lines like `MODBUS RAW rx: nothing — SHT20 sent no response` and `ATM90E32 board 0: no response`, and every measurement in the JSON will be `0`. This is the firmware correctly reporting that no hardware is feeding it data — the values fill in once the ATM90E32 meter and SHT20 sensor are connected. Likewise, `SD card init failed or no card inserted` is harmless if you have no SD card (disable `-DENABLE_SD_CARD` and `-DENABLE_SD_SHT20_LOG` in `platformio.ini` to silence it).
+
 ### Troubleshooting
 
+- **WiFi shows `FAILED` in the serial monitor** (`wifi: <SSID>: FAILED`):
+  - Double-check `WIFI_SSID` / `WIFI_PW` in `include/secrets.h` (case-sensitive, in quotes).
+  - The ESP32-S3 joins **2.4 GHz** networks only — it cannot connect to a 5 GHz-only SSID.
+  - **Check the antenna hardware.** On some NESL 865B boards the RF path is populated for an **external antenna** instead of the internal (on-chip/PCB) antenna. With that variant and no external antenna attached, WiFi cannot associate even when the credentials are correct — it looks like a software problem but isn't. Attach the external antenna, or swap to the internal-antenna component.
 - If you encounter upload errors, ensure that:
   - The correct USB port is selected (can be changed in platformio.ini)
   - You have proper USB drivers installed for your development board
   - Your board is in bootloader mode (if required)
 - Check the PlatformIO documentation for additional help: https://docs.platformio.org/
 
-### Front-of-Meter IEEE ISV StreetPoleEMS Integrations
+## Roadmap: Front-of-Meter IEEE ISV StreetPoleEMS Integrations
+
+> **Planned / aspirational — not yet implemented.** The lists below (through _Extended Networking Capabilities_) are a roadmap of integrations envisioned for the broader StreetPoleEMS platform, not features of the current firmware. For what actually works today, see the [Current Feature Status](#current-feature-status) table above. Contributions toward these are welcome — see [Contributing](#contributing).
 
 #### Framework & Networking
 - Front-of-Meter OPENAMI bidirectional monitor and control PUB/SUB framework
