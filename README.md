@@ -1,5 +1,5 @@
 # EIOT.Energy EMS DER/Site Controller Dev Kit - OpenAMI Metering Application
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/energy-iot/meshems-openami-metering/badge)](https://scorecard.dev/viewer/?uri=github.com/{owner}/{repo})
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/energy-iot/meshems-openami-metering/badge)](https://scorecard.dev/viewer/?uri=github.com/energy-iot/meshems-openami-metering)
 
 ## Overview
 This branch of the MeshEMS platform targets the OpenAMI metering application. The **NESL 865B EMS board** pairs an ESP32-S3 N16R8 (dual-core LX7, 16 MB flash, 8 MB PSRAM) with a purpose-built AC metering add-on and peripherals stack (Ethernet, SD Card reader, OLED display). For energy metering applications either Modbus RTU energy meters (DDS238, CHD130, DDSU666 single-phase); or the CircuitSetup ATM90E32 6-channel SPI meter for 3-phase / multi-CT sites. In addition to the SHT20 temp/humidity sensor which communicates via Modbus. Telemetry is published over WiFi via MQTT; an onboard SSR and optional external I2C PCF8574 8-channel SSR bank provide load-control outputs.
